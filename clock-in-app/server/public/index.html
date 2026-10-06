@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>星光打卡</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+#bg,#fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#bg{z-index:0}
+#fx{z-index:90}
+
+/* 时钟 */
+.hero{padding:28px 30px}
+.greet{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.greet .wave{display:inline-block;animation:wave 2.4s ease-in-out infinite;transform-origin:70% 70%}
+@keyframes wave{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(14deg)}20%{transform:rotate(-8deg)}40%{transform:rotate(-4deg)}50%{transform:rotate(10deg)}}
+.clock{margin:14px 0 2px;font-size:clamp(64px,7.4vw,112px);font-weight:200;line-height:1;letter-spacing:2px;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;filter:drop-shadow(0 0 24px rgba(139,123,255,.55))}
+.clock span{display:inline-block;background:linear-gradient(180deg,#fff 20%,#b9b2ff 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.clock span.tick{animation:tick .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes tick{from{transform:translateY(-14px);opacity:.2}to{transform:none;opacity:1}}
+.clock b{font-weight:200;color:rgba(255,255,255,.45);margin:0 4px;animation:blink 1s steps(1) infinite}
+.clock .sec{font-size:.42em;margin-left:6px;background:linear-gradient(180deg,#FFD36E,#FF6FB5);-webkit-background-clip:text;background-clip:text}
+@keyframes blink{50%{opacity:.25}}
+.date{color:var(--muted);font-size:15px;letter-spacing:1px}
+.cds{display:flex;gap:12px;margin-top:20px;flex-wrap:wrap}
+.cd{flex:1;min-width:200px;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.cd .k{font-size:12px;color:var(--muted)}
+.cd .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px}
+.cd.ok .v{color:var(--mint)}.cd.warn .v{color:var(--amber)}.cd.over .v{color:var(--dim);font-size:15px}
+.timeline{position:relative;margin:26px 4px 6px;height:58px}
+.tl-bar{position:absolute;left:0;right:0;top:22px;height:10px;border-radius:10px;overflow:hidden;background:rgba(255,255,255,.06)}
+.tl-seg{position:absolute;top:0;bottom:0}
+.tl-fill{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.28));transition:width 1s linear}
+.tl-mark{position:absolute;top:0;font-size:11px;color:var(--muted);transform:translateX(-50%);white-space:nowrap}
+.tl-mark::after{content:"";position:absolute;left:50%;top:17px;width:1px;height:20px;background:rgba(255,255,255,.35)}
+.tl-tick{position:absolute;top:40px;font-size:10px;color:var(--dim);transform:translateX(-50%)}
+.tl-now{position:absolute;top:14px;width:2px;height:26px;background:#fff;border-radius:2px;box-shadow:0 0 12px #fff,0 0 30px var(--violet);transform:translateX(-1px);transition:left 1s linear}
+.tl-now::before{content:"";position:absolute;left:50%;top:-6px;width:10px;height:10px;border-radius:50%;transform:translateX(-50%);background:#fff;box-shadow:0 0 14px #fff}
+.tl-dot{position:absolute;top:19px;width:16px;height:16px;border-radius:50%;transform:translateX(-50%);border:2px solid #fff;box-shadow:0 0 14px currentColor}
+.tl-dot.in{background:var(--cyan);color:var(--cyan)}.tl-dot.done{background:var(--gold);color:var(--gold)}
+.quote{margin-top:18px;padding:14px 16px;border-radius:16px;background:linear-gradient(135deg,rgba(139,123,255,.12),rgba(255,111,181,.08));border:1px solid rgba(139,123,255,.25);font-size:14px;line-height:1.7;transition:opacity .6s,transform .6s}
+.quote.fade{opacity:0;transform:translateY(6px)}
+
+/* 打卡面板 */
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.picker{display:flex;gap:8px;flex-wrap:wrap;max-height:126px;overflow:auto;padding:2px}
+.chip{display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);cursor:pointer;transition:.25s}
+.chip:hover{background:rgba(255,255,255,.1);transform:translateY(-1px)}
+.chip .av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:17px;background:rgba(255,255,255,.08)}
+.chip.on{border-color:transparent;background:linear-gradient(135deg,rgba(139,123,255,.45),rgba(255,111,181,.35));box-shadow:0 6px 22px -6px rgba(255,111,181,.7)}
+.chip .sd{width:8px;height:8px;border-radius:50%;background:var(--sc);box-shadow:0 0 8px var(--sc)}
+.who{display:flex;align-items:center;gap:16px;margin:18px 0 16px}
+.who .big-av{width:64px;height:64px;border-radius:20px;display:grid;place-items:center;font-size:36px;position:relative;background:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.04));border:1px solid var(--line)}
+.who .big-av::after{content:"";position:absolute;inset:-3px;border-radius:22px;padding:2px;background:conic-gradient(#FFD36E,#FF6FB5,#8B7BFF,#4CC9FF,#3EF0B5,#FFD36E);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 6s linear infinite}
+.who .name{font-size:22px;font-weight:800}
+.who .tags{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.tag{font-size:12px;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--muted)}
+.tag.fire{color:#FFB547;border-color:rgba(255,181,71,.4);background:rgba(255,181,71,.1)}
+.pbtn{--c1:#4CC9FF;--c2:#8B7BFF;--c3:#3EF0B5;position:relative;display:block;width:100%;border:0;padding:2px;border-radius:26px;cursor:pointer;overflow:hidden;background:transparent;isolation:isolate;text-align:left;transition:transform .25s cubic-bezier(.2,.8,.2,1.3);margin-bottom:14px}
+.pbtn.task{--c1:#FFD36E;--c2:#FF6FB5;--c3:#FF8A4C}
+.pbtn::before{content:"";position:absolute;inset:-80%;z-index:-2;background:conic-gradient(from 0deg,var(--c1),var(--c2),var(--c3),var(--c1));animation:spin 3.2s linear infinite}
+.pbtn .in{position:relative;display:flex;align-items:center;gap:18px;padding:20px 22px;border-radius:24px;background:linear-gradient(135deg,rgba(14,15,40,.94),rgba(28,20,62,.9));overflow:hidden}
+.pbtn .in::after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.14),transparent);transform:skewX(-20deg);animation:sweep 3.6s ease-in-out infinite}
+@keyframes sweep{0%,55%{left:-60%}100%{left:140%}}
+.pbtn .ico{flex:none;width:66px;height:66px;border-radius:20px;display:grid;place-items:center;font-size:34px;background:linear-gradient(135deg,var(--c1),var(--c2));box-shadow:0 12px 30px -6px var(--c2)}
+.pbtn .t1{font-size:22px;font-weight:800;letter-spacing:1px}
+.pbtn .t2{font-size:13px;color:var(--muted);margin-top:4px}
+.pbtn .arrow{margin-left:auto;font-size:22px;opacity:.6;transition:transform .3s}
+.pbtn:hover{transform:translateY(-3px) scale(1.012)}
+.pbtn:hover .arrow{transform:translateX(5px);opacity:1}
+.pbtn:active{transform:scale(.975)}
+.pbtn.ready{animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(139,123,255,0)}50%{box-shadow:0 0 36px 2px color-mix(in srgb,var(--c2) 55%,transparent)}}
+.pbtn.done::before{animation:none;background:linear-gradient(135deg,rgba(62,240,181,.75),rgba(62,240,181,.2))}
+.pbtn.done .in::after{display:none}
+.pbtn.done .ico{background:linear-gradient(135deg,#3EF0B5,#1fb88a);box-shadow:0 10px 26px -6px rgba(62,240,181,.8)}
+.pbtn.locked{cursor:not-allowed;filter:saturate(.25) brightness(.8)}
+.pbtn.locked::before{animation:none}
+.pbtn.locked:hover{transform:none}
+
+/* 统计 */
+.big-status{display:flex;align-items:center;gap:14px}
+.big-status .e{font-size:44px;filter:drop-shadow(0 6px 18px rgba(255,255,255,.25));animation:bob 3s ease-in-out infinite}
+.big-status .l{font-size:20px;font-weight:800}
+.ring-wrap{display:flex;align-items:center;gap:18px}
+.ring{position:relative;width:132px;height:132px;flex:none}
+.ring svg{transform:rotate(-90deg)}
+.ring .c-bg{stroke:rgba(255,255,255,.08)}
+.ring .c-fg{transition:stroke-dashoffset 1.6s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 8px rgba(255,211,110,.7))}
+.ring .ctr{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ring .ctr b{font-size:26px;font-weight:800}
+.ring .ctr small{display:block;color:var(--muted);font-size:11px}
+.mini{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;flex:1}
+.mini div{padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.05);font-size:12px;color:var(--muted)}
+.mini b{display:block;font-size:18px;color:var(--txt)}
+.countdown-big{display:flex;align-items:baseline;gap:6px}
+.countdown-big b{font-size:64px;font-weight:900;line-height:1;background:linear-gradient(180deg,#fff,#FFD36E);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 20px rgba(255,211,110,.45))}
+.payday-today{font-size:28px;font-weight:900}
+.team{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.mate{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;background:rgba(255,255,255,.04);border:1px solid var(--line);cursor:pointer;transition:.25s}
+.mate:hover{background:rgba(255,255,255,.08);transform:translateY(-2px)}
+.mate .av{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:24px;background:rgba(255,255,255,.07)}
+.mate .nm{font-weight:700}
+.mate .tm{font-size:12px;color:var(--muted);margin-top:2px}
+.mate .pill{margin-left:auto}
+
+/* 荣誉 */
+.podium{display:flex;align-items:flex-end;justify-content:center;gap:16px;margin:14px 0 6px;min-height:260px}
+.pod{text-align:center;width:170px}
+.pod .av{font-size:44px;width:76px;height:76px;margin:0 auto 8px;display:grid;place-items:center;border-radius:24px;background:rgba(255,255,255,.08);border:1px solid var(--line);animation:bob 3.4s ease-in-out infinite}
+.pod .nm{font-weight:800}
+.pod .base{margin-top:10px;border-radius:16px 16px 6px 6px;display:grid;place-items:center;font-size:34px;font-weight:900;color:rgba(255,255,255,.9)}
+.pod.p1 .base{height:140px;background:linear-gradient(180deg,#FFD36E,#c98a1b);box-shadow:0 0 50px -10px #FFD36E}
+.pod.p2 .base{height:100px;background:linear-gradient(180deg,#dfe6ff,#8b93b8)}
+.pod.p3 .base{height:76px;background:linear-gradient(180deg,#ffb38a,#b5622f)}
+.pod.p1 .av{width:92px;height:92px;font-size:54px;border-color:rgba(255,211,110,.6);box-shadow:0 0 40px -6px rgba(255,211,110,.7)}
+.crown{font-size:30px;display:block;animation:bob 2s ease-in-out infinite}
+.badges{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.badge{text-align:center;padding:16px 10px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid var(--line);transition:.3s}
+.badge .bi{font-size:40px;display:block;margin-bottom:6px}
+.badge b{display:block}
+.badge small{display:block;color:var(--muted);font-size:11px;margin-top:4px;line-height:1.5}
+.badge.got{background:linear-gradient(160deg,rgba(255,211,110,.16),rgba(255,111,181,.08));border-color:rgba(255,211,110,.4);box-shadow:0 0 30px -12px rgba(255,211,110,.8)}
+.badge.got:hover{transform:translateY(-4px) rotate(-1deg)}
+.badge.lock{filter:grayscale(1);opacity:.45}
+
+/* 庆祝 */
+.celebrate{text-align:center;position:relative;padding:12px 6px 4px}
+.m-celebrate .dlg{overflow:hidden;width:min(480px,100%);padding:34px 28px}
+.rays{position:absolute;left:50%;top:70px;width:520px;height:520px;margin:-260px 0 0 -260px;pointer-events:none;opacity:.55;
+  background:repeating-conic-gradient(from 0deg,rgba(255,211,110,.22) 0 8deg,transparent 8deg 20deg);
+  -webkit-mask:radial-gradient(circle,#000 10%,transparent 62%);mask:radial-gradient(circle,#000 10%,transparent 62%);animation:spin 18s linear infinite}
+.tone-soft .rays{background:repeating-conic-gradient(from 0deg,rgba(139,123,255,.25) 0 8deg,transparent 8deg 20deg)}
+.c-emoji{position:relative;font-size:84px;line-height:1;animation:jump 1s cubic-bezier(.2,.9,.25,1.4) both;filter:drop-shadow(0 10px 30px rgba(255,211,110,.5))}
+@keyframes jump{0%{transform:scale(0) rotate(-30deg)}60%{transform:scale(1.25) rotate(8deg)}100%{transform:none}}
+.c-title{position:relative;font-size:28px;font-weight:900;margin:16px 0 8px}
+.c-sub{position:relative;color:#d7d9f5;line-height:1.75;margin:0 0 6px;font-size:15px;white-space:pre-line}
+.c-amt-l{position:relative;color:var(--muted);font-size:13px;margin-top:16px}
+.c-amt{position:relative;font-size:52px;font-weight:900;font-variant-numeric:tabular-nums;background:linear-gradient(180deg,#FFF6D0,#FFD36E 45%,#FF9F43);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 6px 26px rgba(255,211,110,.55))}
+.celebrate .btn{position:relative;margin-top:22px;padding:12px 26px;font-size:15px}
+.badge-pop .bi{font-size:96px;display:block;animation:jump 1s cubic-bezier(.2,.9,.25,1.4) both;filter:drop-shadow(0 0 30px rgba(255,211,110,.8))}
+.badge-pop .lbl{display:inline-block;margin-top:12px;padding:4px 14px;border-radius:999px;background:linear-gradient(135deg,#FFD36E,#FF6FB5);color:#2a1300;font-weight:800;font-size:12px;letter-spacing:2px}
+.float-txt{position:fixed;z-index:91;pointer-events:none;font-size:30px;font-weight:900;transform:translate(-50%,-50%);
+  background:linear-gradient(180deg,#FFF6D0,#FFD36E,#FF9F43);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 4px 14px rgba(255,180,70,.7));animation:floatUp 1.8s cubic-bezier(.2,.8,.2,1) forwards}
+@keyframes floatUp{0%{opacity:0;transform:translate(-50%,-20%) scale(.6)}15%{opacity:1;transform:translate(-50%,-60%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-260%) scale(1)}}
+.offline-bar{display:none;margin-bottom:16px;padding:12px 16px;border-radius:14px;background:rgba(255,84,112,.12);border:1px solid rgba(255,84,112,.45);color:#FFB3C0}
+.offline .offline-bar{display:block}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="grain"></div>
+<canvas id="fx"></canvas>
+
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><span>✦</span></div>
+      <div><span class="shimmer" id="brandName">星光打卡</span><small>EVERY DAY SHINES</small></div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <div class="tab-ind" id="tabInd"></div>
+      <button data-act="tab" data-tab="punch" class="on">⏰ 打卡</button>
+      <button data-act="tab" data-tab="calendar">📅 我的考勤</button>
+      <button data-act="tab" data-tab="honor">🏆 荣誉榜</button>
+    </nav>
+    <div class="top-right">
+      <div class="chip-net" id="netChip"><i></i><span>连接中…</span></div>
+      <div class="chip-pay" id="payChip">💰</div>
+      <button class="icon-btn" data-act="sound" id="soundBtn" title="音效开关">🔊</button>
+    </div>
+  </header>
+  <div class="offline-bar">📡 暂时连接不上服务器，打卡功能已暂停。请检查网络，系统会自动重连…</div>
+
+  <main>
+    <section class="tab active enter" id="tab-punch">
+      <div class="grid g-top">
+        <div class="card hero rise" style="--d:0">
+          <div class="greet" id="greet"></div>
+          <div class="clock"><span id="ckH">--</span><b>:</b><span id="ckM">--</span><span class="sec" id="ckS">--</span></div>
+          <div class="date" id="ckDate"></div>
+          <div class="cds"><div class="cd" id="cdIn"></div><div class="cd" id="cdTask"></div></div>
+          <div class="timeline" id="timeline"></div>
+          <div class="quote" id="quote"></div>
+        </div>
+        <div class="card rise" style="--d:1" id="punchPanel"><div class="empty"><div class="empty-ico">✨</div><h3>正在连接服务器…</h3></div></div>
+      </div>
+      <div class="grid g-3 mt" id="punchStats"></div>
+      <div class="card mt rise" style="--d:5" id="teamBoard"></div>
+    </section>
+    <section class="tab" id="tab-calendar"></section>
+    <section class="tab" id="tab-honor"></section>
+  </main>
+</div>
+
+<script src="rules.js"></script>
+<script src="ui.js"></script>
+<script>
+(() => {
+'use strict';
+const R = Rules;
+const { $, $$, esc, money, pick, WEEK, cnDs, cnYm, durTxt, META, toast, openModal, askInput, countUp, moveInd } = UI;
+const pad = R.pad;
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+const K_KEY = 'starpunch.terminalKey', K_EMP = 'starpunch.lastEmp', K_SOUND = 'starpunch.sound';
+const APP = {
+  key: ls.get(K_KEY), S: null, skew: 0, online: false, activating: false, tab: 'punch',
+  emp: ls.get(K_EMP), sound: ls.get(K_SOUND) !== '0', cal: { ym: null, emp: null }, honorEmp: null, busy: false
+};
+const nowTs = () => Date.now() + APP.skew;
+const ST = () => (APP.S ? APP.S.settings : { tzOffset: 8, inDL: '11:00', taskDL: '16:00', payDay: 15, undoneRatio: 0.5 });
+const todayDs = () => R.dkey(nowTs(), ST());
+
+/* ================= 网络 ================= */
+async function api(path, body) {
+  let r;
+  try {
+    r = await fetch(path, {
+      method: body ? 'POST' : 'GET', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Terminal-Key': APP.key || '' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (e) { const err = new Error('网络连接失败，请检查网络后重试'); err.status = 0; throw err; }
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) { const err = new Error(j.error || ('请求失败（' + r.status + '）')); err.status = r.status; throw err; }
+  return j;
+}
+function setOnline(v) {
+  APP.online = v;
+  document.body.classList.toggle('offline', !v);
+  const c = $('#netChip'); c.classList.toggle('off', !v);
+  c.querySelector('span').textContent = v ? '已连接' : '离线';
+}
+async function refresh(throwErr) {
+  try {
+    const t0 = Date.now(), s = await api('/api/client/state'), t1 = Date.now();
+    APP.skew = s.now - (t0 + t1) / 2; APP.S = s; setOnline(true);
+    if (!APP.activating) renderLive();
+    return s;
+  } catch (e) {
+    if (e.status === 401) { ls.del(K_KEY); if (!APP.activating) showActivation('激活码已失效或被管理员更换，请重新输入'); }
+    else setOnline(false);
+    if (throwErr) throw e;
+  }
+}
+function showActivation(msg) {
+  APP.activating = true;
+  const m = openModal(`<div style="text-align:center">
+    <div style="font-size:64px;animation:bob 3s ease-in-out infinite">🔑</div><h2 style="margin-top:10px">激活这台打卡电脑</h2>
+    <p class="muted" style="line-height:1.7">${esc(msg || '第一次使用，请输入管理员提供的「终端激活码」')}</p>
+    <input class="inp" id="actKey" placeholder="例如 ABCD-1234" style="text-align:center;font-size:20px;letter-spacing:3px;margin-top:8px" autocomplete="off">
+    <button class="btn primary" id="actOk" style="width:100%;margin-top:14px;padding:12px">激 活</button>
+    <p class="hint" style="margin-top:12px">激活码在管理后台的「设置」页面查看，每台电脑只需输入一次</p></div>`, { dismiss: false });
+  const inp = $('#actKey', m.el); setTimeout(() => inp.focus(), 80);
+  const go = async () => {
+    const v = inp.value.trim().toUpperCase(); if (!v) return;
+    APP.key = v;
+    try {
+      await refresh(true);
+      ls.set(K_KEY, v); APP.activating = false; m.close();
+      Snd.win(); FX.confetti(140); toast('激活成功，欢迎使用 ✨', 'ok'); render(true);
+    } catch (e) {
+      const d = $('.dlg', m.el); d.classList.add('shake'); setTimeout(() => d.classList.remove('shake'), 500);
+      toast(e.status === 401 ? '激活码不正确，请向管理员确认' : e.message, 'err');
+    }
+  };
+  $('#actOk', m.el).onclick = go;
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+}
+
+/* ================= 文案 ================= */
+const QUOTES = [
+  '你认真的样子，本身就在发光。✨', '每一次准时到岗，都是对自己最好的承诺。', '今天的努力，是明天底气的来源。💪',
+  '慢慢来，比较快；稳稳的，最闪亮。', '把普通的日子过得认真，就是了不起的人生。', '你比你想象中更强大。',
+  '星光不问赶路人，时光不负有心人。🌟', '做好一件小事，就离大事近了一步。', '保持热爱，奔赴山海。',
+  '世界会奖励那些按时出现的人。', '今日事今日毕，下班更快乐！🎈', '你的每一份付出，都有人看见。',
+  '认真工作的人，运气都不会太差。🍀', '咖啡续命，热爱续航。☕', '向前一步，就是新的风景。',
+  '你是团队里不可替代的那颗星。⭐', '不慌不忙，自有锋芒。', '每一个准时打卡的早晨，都值得被庆祝。🎉',
+  '小步快跑，天天进步。🚀', '辛苦了，今天的你也很棒！'
+];
+const MSG = {
+  inOnTime: ['新的一天，闪闪发光！今天也要元气满满 ✨', '你来得比太阳还准时，太靠谱了 ☀️', '准时到岗！这份自律，真的很酷 😎', '好的开始是成功的一半，冲鸭！🦆', '欢迎回来～团队因为你更完整了 💜'],
+  inEarly: ['这么早就到啦！早起的鸟儿有虫吃，你就是那只最棒的鸟 🐦', '比闹钟还勤快的你，今天一定超顺利 🌅'],
+  inLate: ['没关系，迟到不可怕～截止前完成任务，依然能拿到一半工资，冲！💪', '深呼吸，现在开始也来得及。专注一点，今天依然可以很漂亮 🌈', '人生没有白走的路，接下来好好表现，我们看好你 ✊'],
+  inDead: ['今天已经过了任务截止时间，工资虽然没了，但能来就是好样的。明天我们重新出发！🌙'],
+  doneFull: ['任务完成！今天的你，无可替代 🏆', '漂亮收工！今日工资已稳稳入账 💰', '完美的一天！给自己一个大大的拥抱 🤗', '效率之王就是你！今天辛苦啦 👑'],
+  doneHalf: ['逆风翻盘！虽然早上晚了一点，但你依然完成了任务，超棒 🌈', '坚持到底的人最酷！今天也是有收获的一天 ✨'],
+  doneZero: ['虽然超时了，但坚持把事情做完本身就很了不起。明天我们一起准时冲！🌙', '辛苦了！今天先好好休息，明天又是闪闪发光的一天 ⭐'],
+  doneUndone: ['任务完成啦！虽然超过了截止时间，但你一直在坚持，辛苦了 💜']
+};
+
+/* ================= 音效 ================= */
+const Snd = {
+  ctx: null,
+  ac() {
+    if (!APP.sound) return null;
+    try { this.ctx = this.ctx || new (window.AudioContext || window.webkitAudioContext)(); if (this.ctx.state === 'suspended') this.ctx.resume(); return this.ctx; } catch (e) { return null; }
+  },
+  note(f, t, d, type = 'sine', v = .12) {
+    const c = this.ac(); if (!c) return;
+    const o = c.createOscillator(), g = c.createGain(), s = c.currentTime + t;
+    o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, s); g.gain.exponentialRampToValueAtTime(v, s + .02); g.gain.exponentialRampToValueAtTime(.0001, s + d);
+    o.connect(g).connect(c.destination); o.start(s); o.stop(s + d + .05);
+  },
+  win() { [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => { this.note(f, i * .09, .7, 'triangle', .1); this.note(f * 2, i * .09, .3, 'sine', .025); }); },
+  coin() { for (let i = 0; i < 7; i++) { this.note(988, i * .11, .08, 'square', .025); this.note(1319, i * .11 + .06, .25, 'square', .025); } },
+  soft() { [392, 493.88, 587.33, 783.99].forEach((f, i) => this.note(f, i * .16, .9, 'sine', .08)); },
+  badge() { [783.99, 987.77, 1174.66, 1567.98, 2093].forEach((f, i) => this.note(f, i * .08, .6, 'triangle', .08)); },
+  tap() { this.note(1200, 0, .05, 'sine', .03); },
+  err() { this.note(220, 0, .18, 'sawtooth', .04); this.note(180, .1, .22, 'sawtooth', .04); }
+};
+
+/* ================= 背景星空 ================= */
+(function stars() {
+  const c = $('#bg'), g = c.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W, H, P = [], mx = 0, my = 0, tx = 0, ty = 0, shoot = null;
+  function resize() {
+    const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    c.width = W * d; c.height = H * d; g.setTransform(d, 0, 0, d, 0, 0);
+    const n = Math.min(140, Math.round(W * H / 14000));
+    P = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random() * .8 + .2, vx: (Math.random() - .5) * .12, vy: (Math.random() - .5) * .12, t: Math.random() * 6.28 }));
+  }
+  resize(); addEventListener('resize', resize);
+  addEventListener('pointermove', e => { tx = (e.clientX / W - .5) * 30; ty = (e.clientY / H - .5) * 30; });
+  function frame() {
+    if (!document.hidden) {
+      mx += (tx - mx) * .04; my += (ty - my) * .04;
+      g.clearRect(0, 0, W, H);
+      for (const p of P) {
+        if (!reduce) { p.x += p.vx; p.y += p.vy; p.t += .03; }
+        if (p.x < -10) p.x = W + 10; if (p.x > W + 10) p.x = -10; if (p.y < -10) p.y = H + 10; if (p.y > H + 10) p.y = -10;
+        p.sx = p.x + mx * p.z; p.sy = p.y + my * p.z;
+      }
+      g.lineWidth = .6;
+      for (let i = 0; i < P.length; i++) for (let j = i + 1; j < P.length; j++) {
+        const a = P[i], b = P[j], dx = a.sx - b.sx, dy = a.sy - b.sy, d2 = dx * dx + dy * dy;
+        if (d2 < 12000) { g.strokeStyle = `rgba(160,150,255,${(1 - d2 / 12000) * .18})`; g.beginPath(); g.moveTo(a.sx, a.sy); g.lineTo(b.sx, b.sy); g.stroke(); }
+      }
+      for (const p of P) {
+        g.fillStyle = `rgba(255,255,255,${.35 + Math.sin(p.t) * .3 * p.z + .3 * p.z})`; g.beginPath(); g.arc(p.sx, p.sy, p.z * 1.6, 0, 6.283); g.fill();
+      }
+      if (!reduce && !shoot && Math.random() < .004) shoot = { x: Math.random() * W * .7, y: Math.random() * H * .3, vx: 9 + Math.random() * 5, vy: 3 + Math.random() * 2, l: 1 };
+      if (shoot) {
+        const s = shoot, grd = g.createLinearGradient(s.x, s.y, s.x - s.vx * 12, s.y - s.vy * 12);
+        grd.addColorStop(0, `rgba(255,255,255,${s.l})`); grd.addColorStop(1, 'rgba(255,255,255,0)');
+        g.strokeStyle = grd; g.lineWidth = 2; g.beginPath(); g.moveTo(s.x, s.y); g.lineTo(s.x - s.vx * 12, s.y - s.vy * 12); g.stroke();
+        s.x += s.vx; s.y += s.vy; s.l -= .012; if (s.l <= 0 || s.x > W + 200) shoot = null;
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* ================= 特效引擎 ================= */
+const FX = (() => {
+  const c = $('#fx'), g = c.getContext('2d');
+  let W, H, P = [], run = false;
+  const Rn = (a, b) => a + Math.random() * (b - a);
+  const PAL = [['#FFD36E', '#FFF3C4', '#FF9F43'], ['#FF6FB5', '#FFC2E2', '#8B7BFF'], ['#4CC9FF', '#B8F1FF', '#3EF0B5'], ['#8B7BFF', '#D7D1FF', '#FF6FB5'], ['#3EF0B5', '#CFFFEF', '#FFD36E']];
+  const CONF = ['#FFD36E', '#FF6FB5', '#8B7BFF', '#4CC9FF', '#3EF0B5', '#FF8A4C', '#ffffff'];
+  function resize() { const d = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; c.width = W * d; c.height = H * d; g.setTransform(d, 0, 0, d, 0, 0); }
+  resize(); addEventListener('resize', resize);
+  const add = p => { if (P.length < 3000) P.push(p); if (!run) { run = true; requestAnimationFrame(loop); } };
+  function burst(x, y, cols = pick(PAL), n = 100, pw = 8) {
+    for (let i = 0; i < n; i++) { const a = Rn(0, 6.283), s = Rn(pw * .25, pw); add({ t: 's', x, y, px: x, py: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, l: 1, dc: Rn(.008, .02), c: pick(cols), w: Rn(1.2, 2.6) }); }
+    add({ t: 'ring', x, y, r: 4, l: 1, c: cols[0] });
+  }
+  function rocket(x, ty, cols) { add({ t: 'r', x, y: H + 10, vx: Rn(-1.2, 1.2), vy: -Rn(12, 15.5), ty, cols, l: 1 }); }
+  function fireworks(k = 6, cols) { for (let i = 0; i < k; i++) setTimeout(() => rocket(Rn(W * .12, W * .88), Rn(H * .1, H * .45), cols || pick(PAL)), i * Rn(160, 300)); }
+  function confetti(n = 160) { for (let i = 0; i < n; i++) add({ t: 'c', x: Rn(0, W), y: Rn(-H * .5, -10), vx: Rn(-2, 2), vy: Rn(2.2, 5), r: Rn(0, 6.28), vr: Rn(-.2, .2), w: Rn(7, 12), h: Rn(4, 7), c: pick(CONF), wb: Rn(0, 6.28), l: 1 }); }
+  function coins(n = 40) { for (let i = 0; i < n; i++) add({ t: 'coin', x: Rn(20, W - 20), y: Rn(-H * .7, -30), vx: Rn(-.6, .6), vy: Rn(3, 6.5), r: Rn(0, 6.28), vr: Rn(.06, .16), s: Rn(14, 24), l: 1 }); }
+  function sparkle(x, y, n = 40) { burst(x, y, ['#ffffff', '#D7D1FF', '#B8F1FF'], n, 4.5); }
+  function drawCoin(p) {
+    const sx = Math.cos(p.r);
+    g.save(); g.translate(p.x, p.y); g.scale(Math.max(.08, Math.abs(sx)), 1);
+    const grd = g.createRadialGradient(-p.s * .3, -p.s * .3, 1, 0, 0, p.s);
+    grd.addColorStop(0, '#FFF6C9'); grd.addColorStop(.55, '#FFD36E'); grd.addColorStop(1, '#C98A1B');
+    g.fillStyle = grd; g.beginPath(); g.arc(0, 0, p.s, 0, 6.283); g.fill();
+    g.strokeStyle = 'rgba(140,90,10,.7)'; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, p.s * .78, 0, 6.283); g.stroke();
+    if (sx > 0) { g.fillStyle = '#9a5f00'; g.font = `900 ${p.s}px "Microsoft YaHei",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('¥', 0, 1); }
+    g.restore();
+  }
+  function loop() {
+    g.clearRect(0, 0, W, H);
+    const next = [];
+    for (const p of P) {
+      if (p.t === 's') {
+        p.px = p.x; p.py = p.y; p.vx *= .982; p.vy = p.vy * .982 + .07; p.x += p.vx; p.y += p.vy; p.l -= p.dc;
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, p.l); g.strokeStyle = p.c; g.lineWidth = p.w; g.lineCap = 'round';
+        g.beginPath(); g.moveTo(p.px - p.vx * 2, p.py - p.vy * 2); g.lineTo(p.x, p.y); g.stroke();
+      } else if (p.t === 'ring') {
+        p.r += (120 - p.r) * .08; p.l -= .03;
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = Math.max(0, p.l) * .6; g.strokeStyle = p.c; g.lineWidth = 2;
+        g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.283); g.stroke();
+      } else if (p.t === 'r') {
+        p.x += p.vx; p.y += p.vy; p.vy += .2;
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = 1; g.fillStyle = p.cols[1];
+        g.beginPath(); g.arc(p.x, p.y, 2.4, 0, 6.283); g.fill();
+        next.push({ t: 's', x: p.x, y: p.y, px: p.x, py: p.y, vx: Rn(-.5, .5), vy: Rn(.5, 1.5), l: .7, dc: .04, c: p.cols[0], w: 1.4 });
+        if (p.vy >= -1.5 || p.y <= p.ty) { p.l = 0; burst(p.x, p.y, p.cols, 120, Rn(6.5, 9.5)); if (Math.random() < .5) setTimeout(() => sparkle(p.x + Rn(-30, 30), p.y + Rn(-30, 30), 30), 260); }
+      } else if (p.t === 'c') {
+        p.wb += .08; p.x += p.vx + Math.sin(p.wb) * .7; p.y += p.vy; p.r += p.vr; if (p.y > H + 20) p.l = 0;
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1;
+        g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.scale(1, Math.cos(p.wb * 1.6)); g.fillStyle = p.c; g.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); g.restore();
+      } else if (p.t === 'coin') {
+        p.x += p.vx; p.y += p.vy; p.vy += .05; p.r += p.vr; if (p.y > H + 40) p.l = 0;
+        g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; drawCoin(p);
+      }
+      if (p.l > 0) next.push(p);
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    P = next;
+    if (P.length) requestAnimationFrame(loop); else { run = false; g.clearRect(0, 0, W, H); }
+  }
+  return { burst, fireworks, confetti, coins, sparkle, PAL };
+})();
+const elCenter = el => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+function floatText(x, y, text) {
+  const d = document.createElement('div'); d.className = 'float-txt'; d.textContent = text;
+  d.style.left = x + 'px'; d.style.top = y + 'px'; document.body.appendChild(d); setTimeout(() => d.remove(), 1900);
+}
+function celebrate({ emoji, title, sub = '', amount = null, amountLabel = '', tone = 'gold', okText = '收下这份好心情 ✨' }) {
+  return new Promise(res => {
+    const m = openModal(`<div class="celebrate tone-${tone}"><div class="rays"></div>
+      <div class="c-emoji">${emoji}</div><div class="c-title shimmer">${esc(title)}</div><p class="c-sub">${esc(sub)}</p>
+      ${amount != null ? `<div class="c-amt-l">${esc(amountLabel)}</div><div class="c-amt">¥0.00</div>` : ''}
+      <button class="btn primary" data-ok>${esc(okText)}</button></div>`, { cls: 'm-celebrate', onClose: res });
+    if (amount != null) setTimeout(() => countUp($('.c-amt', m.el), amount, 1600), 350);
+    $('[data-ok]', m.el).onclick = () => m.close(true);
+  });
+}
+async function showBadges(keys, emp) {
+  for (const k of keys || []) {
+    const b = R.BADGES.find(x => x.k === k); if (!b) continue;
+    Snd.badge(); FX.fireworks(3, FX.PAL[0]);
+    await new Promise(res => {
+      const m = openModal(`<div class="celebrate badge-pop"><div class="rays"></div><span class="lbl">成就解锁</span>
+        <div class="bi">${b.i}</div><div class="c-title shimmer">${esc(b.n)}</div><p class="c-sub">${esc(emp.name)}，${esc(b.d)}！\n这份荣耀已永久记录在荣誉榜 🏆</p>
+        <button class="btn gold" data-ok>太棒啦！</button></div>`, { cls: 'm-celebrate', onClose: res });
+      $('[data-ok]', m.el).onclick = () => m.close(true);
+    });
+  }
+}
+
+/* ================= 打卡页 ================= */
+const emps = () => (APP.S ? APP.S.employees : []);
+const cur = () => emps().find(e => e.id === APP.emp);
+function greetTxt(h) {
+  if (h < 5) return ['🌙', '夜深了']; if (h < 9) return ['🌅', '早上好']; if (h < 11) return ['☀️', '上午好'];
+  if (h < 13) return ['🍱', '中午好']; if (h < 18) return ['🌤️', '下午好']; if (h < 23) return ['🌆', '晚上好']; return ['🌙', '夜深了'];
+}
+function updateGreeting() {
+  const [ic, t] = greetTxt(R.parts(nowTs(), ST()).hh), e = cur();
+  $('#greet').innerHTML = `<span class="wave">${ic}</span> ${t}${e ? '，' + esc(e.name) : ''}！<span class="dim" style="font-size:13px;font-weight:400">今天也要闪闪发光</span>`;
+}
+const TL = { start: 420, end: 1140, sig: '' };
+function buildTimeline() {
+  const st = ST(), inDL = R.hm(st.inDL), tDL = R.hm(st.taskDL), sig = st.inDL + st.taskDL;
+  if (TL.sig === sig) return; TL.sig = sig;
+  TL.start = Math.max(0, Math.min(420, inDL - 180)); TL.end = Math.min(1440, Math.max(1140, tDL + 180));
+  const pct = v => ((v - TL.start) / (TL.end - TL.start) * 100).toFixed(2) + '%';
+  let ticks = '';
+  for (let h = Math.ceil(TL.start / 60); h * 60 <= TL.end; h += 2) ticks += `<div class="tl-tick" style="left:${pct(h * 60)}">${pad(h)}:00</div>`;
+  $('#timeline').innerHTML = `
+    <div class="tl-mark" style="left:${pct(inDL)};color:var(--mint)">⏰ ${st.inDL} 上班截止</div>
+    <div class="tl-mark" style="left:${pct(tDL)};color:var(--gold)">🎯 ${st.taskDL} 任务截止</div>
+    <div class="tl-bar">
+      <div class="tl-seg" style="left:0;width:${pct(inDL)};background:linear-gradient(90deg,rgba(62,240,181,.15),rgba(62,240,181,.55))"></div>
+      <div class="tl-seg" style="left:${pct(inDL)};width:calc(${pct(tDL)} - ${pct(inDL)});background:linear-gradient(90deg,rgba(139,123,255,.45),rgba(255,111,181,.55))"></div>
+      <div class="tl-seg" style="left:${pct(tDL)};right:0;background:rgba(255,255,255,.05)"></div>
+      <div class="tl-fill" id="tlFill"></div>
+    </div>${ticks}<div id="tlDots"></div><div class="tl-now" id="tlNow"></div>`;
+  TL.pct = pct;
+}
+let quoteIdx = Math.floor(Math.random() * QUOTES.length);
+function rotateQuote(first) {
+  const q = $('#quote'); const set = () => { q.innerHTML = `💬 ${esc(QUOTES[quoteIdx % QUOTES.length])}`; q.classList.remove('fade'); };
+  quoteIdx++; if (first) return set(); q.classList.add('fade'); setTimeout(set, 600);
+}
+function setDigit(el, v) { if (el.textContent !== v) { el.textContent = v; el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); } }
+
+function renderPunch(anim) {
+  if (!APP.S) return;
+  buildTimeline(); updateGreeting();
+  const panel = $('#punchPanel'), stats = $('#punchStats'), board = $('#teamBoard'), list = emps();
+  if (!list.length) {
+    panel.innerHTML = `<div class="empty"><div class="empty-ico">🌟</div><h3>还没有员工</h3><p class="muted">请管理员在「管理后台 → 员工」中添加员工后再来打卡</p></div>`;
+    stats.innerHTML = ''; board.innerHTML = ''; $('#tlDots').innerHTML = ''; return;
+  }
+  if (!cur()) APP.emp = list[0].id;
+  const st = ST(), e = cur(), td = e.today, t = nowTs(), nowM = R.minOf(t, st), inDL = R.hm(st.inDL), tDL = R.hm(st.taskDL);
+  const left = target => durTxt((target - nowM) * 60000);
+
+  let inCls, inT1, inT2;
+  if (td.in) { inCls = 'done'; inT1 = `已打卡 ${R.fmtT(td.in, st)}`; inT2 = R.minOf(td.in, st) < inDL ? '准时到岗 ✓ 今天的你闪闪发光' : '已到岗 · 截止前完成任务可拿半薪'; }
+  else { inCls = 'ready'; inT1 = '上班打卡'; inT2 = nowM < inDL ? `${st.inDL} 前打卡即为准时 · 还剩 ${left(inDL)}` : nowM < tDL ? `已过 ${st.inDL}，现在打卡仍可争取半薪 💪` : '已过任务截止时间，今日无法计薪'; }
+  let dnCls, dnT1, dnT2;
+  if (!td.in) { dnCls = 'locked'; dnT1 = '任务完成打卡'; dnT2 = '先打上班卡，再来这里收工哦'; }
+  else if (td.done) { dnCls = 'done'; dnT1 = `已完成 ${R.fmtT(td.done, st)}`; dnT2 = R.minOf(td.done, st) < tDL ? '按时收工 ✓ 今天辛苦啦' : '虽然超时，但坚持完成就很棒'; }
+  else { dnCls = 'ready'; dnT1 = '任务完成打卡'; dnT2 = nowM < tDL ? `${st.taskDL} 前完成可锁定今日工资 · 还剩 ${left(tDL)}` : `已过 ${st.taskDL}，完成后仍会记录`; }
+
+  panel.innerHTML = `
+    <div class="panel-head"><h3>👋 选择你自己</h3><span class="muted">${list.length} 位伙伴</span></div>
+    <div class="picker">${list.map(x => `<button class="chip ${x.id === e.id ? 'on' : ''}" data-act="pick" data-id="${x.id}"><span class="av">${esc(x.avatar)}</span><span>${esc(x.name)}</span><span class="sd ${META[x.today.code].c}"></span></button>`).join('')}</div>
+    <div class="who"><div class="big-av">${esc(e.avatar)}</div>
+      <div><div class="name">${esc(e.name)}</div><div class="tags">
+        ${e.streak > 0 ? `<span class="tag fire">🔥 连续正常出勤 ${e.streak} 天</span>` : `<span class="tag">🌱 今天开始新的连胜</span>`}
+        <span class="pill ${META[td.code].c}">${META[td.code].i} ${td.label || '—'}</span></div></div></div>
+    <button class="pbtn ${inCls}" data-act="punch-in"><div class="in"><div class="ico">${td.in ? '✅' : '☀️'}</div><div><div class="t1">${inT1}</div><div class="t2">${inT2}</div></div><div class="arrow">${td.in ? '' : '➜'}</div></div></button>
+    <button class="pbtn task ${dnCls}" data-act="punch-done"><div class="in"><div class="ico">${td.done ? '🏆' : dnCls === 'locked' ? '🔒' : '🎯'}</div><div><div class="t1">${dnT1}</div><div class="t2">${dnT2}</div></div><div class="arrow">${dnCls === 'ready' ? '➜' : ''}</div></div></button>`;
+
+  let todayBody;
+  if (td.final) {
+    const amt = td.ratio * e.rate;
+    todayBody = `<div class="big-status"><span class="e">${META[td.code].i}</span><div><div class="l">${td.label}</div><div class="muted">今日结果已锁定</div></div></div>
+      <div class="muted" style="margin-top:16px">今日收入</div><div class="money" ${anim ? `data-count="${amt}"` : ''}>${money(amt)}</div>`;
+  } else {
+    const pot = td.potential * e.rate;
+    const tip = td.code === 'waiting' ? (td.potential === 1 ? `${st.inDL} 前上班打卡 + ${st.taskDL} 前完成任务，今日全额到手` : `现在打卡并在 ${st.taskDL} 前完成，还能拿到一半`) : `在 ${st.taskDL} 前完成任务，即可锁定这笔收入`;
+    todayBody = `<div class="big-status"><span class="e">${META[td.code].i}</span><div><div class="l">${td.label}</div><div class="muted">${tip}</div></div></div>
+      <div class="muted" style="margin-top:16px">今日最高可得</div><div class="money" ${anim ? `data-count="${pot}"` : ''}>${money(pot)}</div>`;
+  }
+  const mo = e.month, salary = mo.salary || 0, pctv = salary ? Math.min(1, mo.base / salary) : 0, C = 2 * Math.PI * 56;
+  const hasComm = mo.commissionRate > 0 || mo.perfTotal !== 0;
+  const pd = APP.S.nextPayDate, pdDays = Math.round((Date.parse(pd) - Date.parse(todayDs())) / 864e5);
+  const [py, pm] = R.splitDs(pd), prevYm = R.mkey(py, pm - 1), last = e.lastPayroll, p = R.parts(t, st), half = st.undoneRatio;
+  stats.innerHTML = `
+    <div class="card rise" style="--d:2"><div class="stat-head"><h3>📍 今日状态</h3><span class="muted">日薪 ${money(e.rate)}</span></div>${todayBody}</div>
+    <div class="card rise" style="--d:3"><div class="stat-head"><h3>📈 本月收入</h3><span class="muted">${p.m + 1}月 · 共 ${mo.days} 天</span></div>
+      <div class="ring-wrap">
+        <div class="ring"><svg width="132" height="132"><defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFD36E"/><stop offset=".5" stop-color="#FF6FB5"/><stop offset="1" stop-color="#8B7BFF"/></linearGradient></defs>
+          <circle class="c-bg" cx="66" cy="66" r="56" fill="none" stroke-width="12"/>
+          <circle class="c-fg" id="ringFg" cx="66" cy="66" r="56" fill="none" stroke="url(#rg)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${anim ? C : C * (1 - pctv)}" data-off="${C * (1 - pctv)}"/></svg>
+          <div class="ctr"><div><b>${Math.round(pctv * 100)}%</b><small>月薪进度</small></div></div></div>
+        <div style="flex:1"><div class="muted">已入账</div><div class="money sm" ${anim ? `data-count="${mo.amount}"` : ''}>${money(mo.amount)}</div>
+          ${hasComm ? `<div class="hint">基本 ${money(mo.base)} + 提成 ${money(mo.commission)}</div>` : ''}
+          <div class="mini" style="margin-top:10px"><div>正常<b style="color:var(--mint)">${mo.counts.normal}</b></div><div>半薪<b style="color:var(--amber)">${mo.counts.late + (half == .5 ? mo.counts.undone : 0)}</b></div>
+          <div>无薪<b style="color:var(--red)">${mo.counts.zero + (half == 0 ? mo.counts.undone : 0)}</b></div><div>缺勤<b>${mo.counts.absent}</b></div></div></div>
+      </div></div>
+    <div class="card rise" style="--d:4"><div class="stat-head"><h3>💰 发薪日</h3><span class="muted">每月 ${st.payDay} 日</span></div>
+      ${pdDays === 0 ? `<div class="payday-today shimmer">🎉 今天就是发薪日！</div>` : `<div class="countdown-big"><b>${pdDays}</b><span class="muted">天后发薪</span></div>`}
+      <div class="kv" style="margin-top:12px"><span class="muted">发放日期</span><span>${cnDs(pd)}（周${WEEK[R.dowOf(pd)]}）</span></div>
+      <div class="kv"><span class="muted">结算周期</span><span>${cnYm(prevYm)}整月</span></div>
+      <div class="kv"><span class="muted">上次结算</span><span>${last ? `${money(last.amount)} <span class="${last.paid ? 'paid' : 'unpaid'}">${last.paid ? '已发放' : '待发放'}</span>` : '<span class="dim">暂无</span>'}</span></div>
+    </div>`;
+
+  board.innerHTML = `<div class="stat-head"><h3>👥 今日团队动态</h3><span class="muted">${list.filter(x => x.today.in).length} / ${list.length} 已到岗</span></div>
+    <div class="team">${list.map(x => `<div class="mate" data-act="pick" data-id="${x.id}"><div class="av">${esc(x.avatar)}</div><div><div class="nm">${esc(x.name)}</div>
+      <div class="tm">${x.today.in ? '上班 ' + R.fmtT(x.today.in, st) : '未打卡'}${x.today.done ? ' · 完成 ' + R.fmtT(x.today.done, st) : ''}</div></div>
+      <span class="pill ${META[x.today.code].c}">${META[x.today.code].i} ${x.today.label || '—'}</span></div>`).join('')}</div>`;
+
+  const clamp = v => Math.max(TL.start, Math.min(TL.end, v));
+  $('#tlDots').innerHTML = (td.in ? `<div class="tl-dot in" title="上班 ${R.fmtT(td.in, st)}" style="left:${TL.pct(clamp(R.minOf(td.in, st)))}"></div>` : '')
+    + (td.done ? `<div class="tl-dot done" title="完成 ${R.fmtT(td.done, st)}" style="left:${TL.pct(clamp(R.minOf(td.done, st)))}"></div>` : '');
+  if (anim) {
+    $$('[data-count]', $('#tab-punch')).forEach(el => countUp(el, +el.dataset.count));
+    const fg = $('#ringFg'); if (fg) requestAnimationFrame(() => requestAnimationFrame(() => { fg.style.strokeDashoffset = fg.dataset.off; }));
+  }
+}
+
+/* 打卡动作 */
+async function askPin(e) {
+  if (!e.hasPin) return '';
+  return askInput({ title: `${e.avatar} ${e.name}，请输入打卡密码`, icon: '🔑', type: 'password', placeholder: '打卡密码', okText: '确认' });
+}
+async function punchIn(btn) {
+  const e = cur(); if (!e) return;
+  if (!APP.online) { toast('当前离线，暂时无法打卡', 'err'); return; }
+  if (e.today.in) { toast('今天已经打过上班卡啦 ✓'); return; }
+  const pin = await askPin(e); if (pin == null) return;
+  const [x, y] = elCenter(btn);
+  let r;
+  try { r = await api('/api/client/punch', { empId: e.id, type: 'in', pin }); }
+  catch (err) { Snd.err(); toast(err.message, 'err'); if (err.status === 409) refresh(); return; }
+  APP.S = r.state; renderPunch(true);
+  const st = ST(), m = R.minOf(r.at, st), t = R.fmtTS(r.at, st);
+  let p;
+  if (m < R.hm(st.inDL)) {
+    Snd.win(); FX.burst(x, y, FX.PAL[2], 130, 9); FX.confetti(140); setTimeout(() => FX.fireworks(4), 300);
+    p = celebrate({ emoji: m < 540 ? '🌅' : '☀️', title: `准时到岗 ${t}`, sub: pick(m < 540 ? MSG.inEarly : MSG.inOnTime) + `\n别忘了 ${st.taskDL} 前完成任务哦！` });
+  } else if (m < R.hm(st.taskDL)) {
+    Snd.soft(); FX.sparkle(x, y, 70);
+    p = celebrate({ emoji: '🌈', title: `已到岗 ${t}`, sub: pick(MSG.inLate), tone: 'soft', okText: '我会加油的 💪' });
+  } else {
+    Snd.soft(); FX.sparkle(x, y, 40);
+    p = celebrate({ emoji: '🌙', title: `已到岗 ${t}`, sub: pick(MSG.inDead), tone: 'soft', okText: '明天见 👋' });
+  }
+  await p; await showBadges(r.newBadges, e); renderLive();
+}
+async function punchDone(btn) {
+  const e = cur(); if (!e) return;
+  if (!APP.online) { toast('当前离线，暂时无法打卡', 'err'); return; }
+  if (!e.today.in) { Snd.err(); btn.classList.add('shake'); setTimeout(() => btn.classList.remove('shake'), 500); toast('先打上班卡，再来收工哦 😉'); return; }
+  if (e.today.done) { toast('今天的任务已经完成啦，好好休息 ✓'); return; }
+  const st = ST(), onTime = R.minOf(e.today.in, st) < R.hm(st.inDL), before = R.minOf(nowTs(), st) < R.hm(st.taskDL);
+  const willGet = (before ? (onTime ? 1 : .5) : (onTime ? +st.undoneRatio : 0)) * e.rate;
+  const note = await askInput({
+    title: '确认今日任务已完成？', icon: '🎯', textarea: true, okText: '确认完成 ✓', placeholder: '今天完成了什么？（选填，会记录到考勤里）',
+    text: before ? `现在提交，今日可锁定 <b style="color:var(--gold)">${money(willGet)}</b> 🎁` : `已过 ${st.taskDL}，提交后今日按规则结算 <b style="color:var(--gold)">${money(willGet)}</b>`
+  });
+  if (note == null) return;
+  const pin = await askPin(e); if (pin == null) return;
+  const [x, y] = elCenter(btn);
+  let r;
+  try { r = await api('/api/client/punch', { empId: e.id, type: 'done', pin, note }); }
+  catch (err) { Snd.err(); toast(err.message, 'err'); if (err.status === 409) refresh(); return; }
+  APP.S = r.state; renderPunch(true);
+  const amt = r.amount, code = r.ev.code;
+  let p;
+  if (code === 'normal') {
+    Snd.win(); setTimeout(() => Snd.coin(), 500);
+    FX.burst(x, y, FX.PAL[0], 160, 10); FX.fireworks(8); FX.coins(50); setTimeout(() => FX.confetti(120), 700);
+    floatText(x, y - 20, '+' + money(amt));
+    p = celebrate({ emoji: '🏆', title: '完美收工！', sub: pick(MSG.doneFull), amount: amt, amountLabel: '今日工资已入账' });
+  } else if (code === 'late') {
+    Snd.win(); setTimeout(() => Snd.coin(), 400); FX.burst(x, y, FX.PAL[1], 120, 8); FX.coins(24); FX.fireworks(3, FX.PAL[1]);
+    floatText(x, y - 20, '+' + money(amt));
+    p = celebrate({ emoji: '🌈', title: '逆风翻盘！', sub: pick(MSG.doneHalf), amount: amt, amountLabel: '今日半薪已入账' });
+  } else if (code === 'undone') {
+    Snd.soft(); FX.sparkle(x, y, 60); if (amt > 0) FX.coins(14);
+    p = celebrate({ emoji: '💜', title: '任务完成', sub: pick(MSG.doneUndone), amount: amt, amountLabel: '今日结算', tone: 'soft' });
+  } else {
+    Snd.soft(); FX.sparkle(x, y, 50);
+    p = celebrate({ emoji: '🌙', title: '辛苦啦', sub: pick(MSG.doneZero), tone: 'soft', okText: '明天准时见 ✊' });
+  }
+  await p; await showBadges(r.newBadges, e); renderLive();
+}
+
+/* ================= 我的考勤 ================= */
+async function renderCalendar() {
+  const sec = $('#tab-calendar'), list = emps();
+  if (!list.length) { sec.innerHTML = `<div class="card rise"><div class="empty"><div class="empty-ico">📅</div><h3>还没有员工</h3></div></div>`; return; }
+  if (!list.find(e => e.id === APP.cal.emp)) APP.cal.emp = (cur() || list[0]).id;
+  if (!APP.cal.ym) APP.cal.ym = todayDs().slice(0, 7);
+  const e = list.find(x => x.id === APP.cal.emp), ym = APP.cal.ym;
+  let data;
+  try { data = await api(`/api/client/month?emp=${encodeURIComponent(e.id)}&ym=${ym}`); }
+  catch (err) { sec.innerHTML = `<div class="card"><div class="empty"><div class="empty-ico">📡</div><h3>加载失败</h3><p class="muted">${esc(err.message)}</p></div></div>`; return; }
+  if (APP.tab !== 'calendar' || APP.cal.emp !== e.id || APP.cal.ym !== ym) return;
+  const st = ST(), sm = data.summary, settled = data.payroll, today = todayDs();
+  const [y, m] = R.splitDs(ym), off = (R.dowOf(R.ymd(y, m, 1)) + 6) % 7;
+  let cells = ['一', '二', '三', '四', '五', '六', '日'].map(w => `<div class="wh">周${w}</div>`).join('');
+  for (let i = 0; i < off; i++) cells += `<div class="cell blank"></div>`;
+  data.days.forEach((d, i) => {
+    const me = META[d.code];
+    cells += `<div class="cell ${me.c} ${d.ds === today ? 'today' : ''}" data-act="day" data-i="${i}">
+      <div class="dn">${i + 1}</div><div class="di">${me.i}</div>
+      <div class="dt">${d.in ? R.fmtT(d.in, st) : ''}${d.done ? ' → ' + R.fmtT(d.done, st) : ''}${d.edited ? ' ✎' : ''}</div><div class="dl">${d.label}</div></div>`;
+  });
+  APP.cal.days = data.days;
+  const showComm = sm.commissionRate > 0 || sm.perfTotal !== 0;
+  const L = [['normal', '正常出勤 · 全薪'], ['late', '迟到 · 半薪'], ['undone', '准时但任务超时 · ' + R.ratioTxt(st.undoneRatio)], ['zero', '迟到且超时 · 无薪'], ['absent', '缺勤']];
+  sec.innerHTML = `
+    <div class="card ${APP.calAnim ? 'rise' : ''}" style="--d:0">
+      <div class="cal-head">
+        <select class="inp" style="width:auto;min-width:160px" id="calEmp">${list.map(x => `<option value="${x.id}" ${x.id === e.id ? 'selected' : ''}>${esc(x.avatar)} ${esc(x.name)}</option>`).join('')}</select>
+        <div class="sp"></div>
+        <button class="btn" data-act="cal-prev">‹ 上月</button><div class="cal-title shimmer">${cnYm(ym)}</div><button class="btn" data-act="cal-next">下月 ›</button>
+        <button class="btn" data-act="cal-today">回到本月</button>
+      </div>
+      <div class="sum-grid">
+        <div><small>应出勤</small><b>${sm.eligible} 天</b></div>
+        <div><small>日薪</small><b>${money(sm.rate)}</b></div>
+        <div><small>✨ 正常</small><b style="color:var(--mint)">${sm.counts.normal}</b></div>
+        <div><small>🌤️ 迟到半薪</small><b style="color:var(--amber)">${sm.counts.late}</b></div>
+        <div><small>⏳ 任务超时</small><b style="color:var(--orange)">${sm.counts.undone}</b></div>
+        <div><small>🌧️ 无薪</small><b style="color:var(--red)">${sm.counts.zero}</b></div>
+        <div><small>💤 缺勤</small><b>${sm.counts.absent}</b></div>
+        ${showComm ? `<div><small>基本工资</small><b>${money(settled ? settled.base : sm.base)}</b></div><div><small>提成（${(settled ? settled.commissionRate : sm.commissionRate)}%）</small><b style="color:var(--pink)">${money(settled ? settled.commission : sm.commission)}</b></div>` : ''}
+        <div><small>${settled ? (settled.paid ? '已发放工资' : '已结算工资') : '本月累计工资'}</small><b class="money sm" style="font-size:22px">${money(settled ? settled.amount : sm.amount)}</b></div>
+      </div>
+    </div>
+    <div class="card mt ${APP.calAnim ? 'rise' : ''}" style="--d:1"><div class="cal">${cells}</div>
+      <div class="legend">${L.map(([c, t]) => `<span class="pill ${META[c].c}">${META[c].i} ${t}</span>`).join('')}<span class="hint" style="margin-left:auto">点击日期查看详情 · 打卡有误请联系管理员补卡（✎ 表示管理员修改过）</span></div>
+    </div>`;
+  APP.calAnim = false;
+  $('#calEmp').onchange = ev => { APP.cal.emp = ev.target.value; renderCalendar(); };
+}
+function dayDetail(i) {
+  const d = (APP.cal.days || [])[i]; if (!d) return;
+  const st = ST(), e = emps().find(x => x.id === APP.cal.emp);
+  openModal(`
+    <h2>${esc(e ? e.avatar + ' ' + e.name : '')} · ${cnDs(d.ds)} 周${WEEK[R.dowOf(d.ds)]}</h2>
+    <div style="margin:10px 0 14px"><span class="pill ${META[d.code].c}">${META[d.code].i} ${d.label || '未到'}</span></div>
+    <div class="kv"><span class="muted">上班打卡</span><span>${d.in ? R.fmtTS(d.in, st) : '—'}</span></div>
+    <div class="kv"><span class="muted">任务完成</span><span>${d.done ? R.fmtTS(d.done, st) : '—'}</span></div>
+    <div class="kv"><span class="muted">当日工资</span><span class="money sm" style="font-size:18px">${d.amount != null ? money(d.amount) : '—'}</span></div>
+    ${d.note ? `<div class="kv"><span class="muted">工作记录</span><span style="white-space:pre-wrap;text-align:right;max-width:70%">${esc(d.note)}</span></div>` : ''}
+    ${d.edited ? `<div class="hint" style="margin-top:8px">✎ 该记录由管理员修改过</div>` : ''}
+    <p class="hint" style="margin-top:14px">如打卡记录有误，请联系管理员在后台补卡。</p>`);
+}
+
+/* ================= 荣誉榜 ================= */
+function renderHonor() {
+  const sec = $('#tab-honor'), list = emps();
+  if (!list.length) { sec.innerHTML = `<div class="card"><div class="empty"><div class="empty-ico">🏆</div><h3>荣誉榜虚位以待</h3></div></div>`; return; }
+  const rows = list.map(e => ({ e, b: Object.keys(e.badges || {}).length }))
+    .sort((a, b) => b.e.month.counts.normal - a.e.month.counts.normal || b.e.streak - a.e.streak || b.e.month.base - a.e.month.base || b.b - a.b);
+  const top = rows.slice(0, 3), order = [top[1], top[0], top[2]].filter(Boolean);
+  if (!list.find(e => e.id === APP.honorEmp)) APP.honorEmp = (cur() || list[0]).id;
+  const he = list.find(e => e.id === APP.honorEmp), mine = he.badges || {};
+  const teamNormal = list.reduce((s, e) => s + e.month.counts.normal, 0), mo = R.parts(nowTs(), ST()).m + 1;
+  sec.innerHTML = `
+    <div class="card rise" style="--d:0">
+      <div class="sect-title"><h3>🏆 ${mo}月 准时之星</h3><span class="sp"></span><span class="muted">团队本月累计正常出勤 <b style="color:var(--mint)">${teamNormal}</b> 人次</span></div>
+      <div class="podium">${order.map(r => { const rank = rows.indexOf(r) + 1; return `<div class="pod p${rank}">
+        ${rank === 1 ? '<span class="crown">👑</span>' : ''}<div class="av">${esc(r.e.avatar)}</div><div class="nm">${esc(r.e.name)}</div>
+        <div class="muted" style="font-size:12px">正常 ${r.e.month.counts.normal} 天 · 🔥${r.e.streak}</div><div class="base">${rank}</div></div>`; }).join('')}</div>
+    </div>
+    <div class="grid g-2 mt">
+      <div class="card rise" style="--d:1"><div class="sect-title"><h3>📊 本月排行</h3></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>#</th><th>员工</th><th>正常天数</th><th>连续</th><th>成就</th></tr></thead><tbody>
+        ${rows.map((r, i) => `<tr><td>${['🥇', '🥈', '🥉'][i] || i + 1}</td><td>${esc(r.e.avatar)} ${esc(r.e.name)}</td><td>${r.e.month.counts.normal}</td><td>🔥 ${r.e.streak}</td><td>🏅 ${r.b}</td></tr>`).join('')}
+        </tbody></table></div></div>
+      <div class="card rise" style="--d:2"><div class="sect-title"><h3>🎖️ 成就墙</h3><span class="sp"></span><select class="inp" style="width:auto" id="honorEmp">${list.map(x => `<option value="${x.id}" ${x.id === he.id ? 'selected' : ''}>${esc(x.avatar)} ${esc(x.name)}</option>`).join('')}</select></div>
+        <div class="muted" style="margin-bottom:12px">已解锁 ${Object.keys(mine).length} / ${R.BADGES.length}</div>
+        <div class="badges">${R.BADGES.map(b => `<div class="badge ${mine[b.k] ? 'got' : 'lock'}"><span class="bi">${mine[b.k] ? b.i : '🔒'}</span><b>${b.n}</b><small>${b.d}${mine[b.k] ? '<br>🗓 ' + R.dkey(mine[b.k], ST()) : ''}</small></div>`).join('')}</div></div>
+    </div>`;
+  $('#honorEmp').onchange = ev => { APP.honorEmp = ev.target.value; renderHonor(); };
+}
+
+/* ================= 渲染 / 事件 ================= */
+function renderTop() {
+  if (!APP.S) return;
+  const st = ST(), pd = APP.S.nextPayDate, days = Math.round((Date.parse(pd) - Date.parse(todayDs())) / 864e5);
+  $('#payChip').innerHTML = days === 0 ? '💰 今天发薪日！' : `💰 距发薪日 <b>${days}</b> 天`;
+  $('#brandName').textContent = (st.company ? st.company + ' · ' : '') + '星光打卡';
+  document.title = `${st.company || '星光打卡'} · 员工打卡`;
+}
+function render(anim) {
+  renderTop(); $('#soundBtn').textContent = APP.sound ? '🔊' : '🔇';
+  if (APP.tab === 'punch') renderPunch(anim);
+  else if (APP.tab === 'calendar') renderCalendar();
+  else if (APP.tab === 'honor') renderHonor();
+}
+/** 定时刷新时只更新会变化的页面，避免打断正在查看的内容 */
+function renderLive() {
+  renderTop();
+  if (APP.tab === 'punch') renderPunch(false);
+  else if (APP.tab === 'honor' && !UI.modalOpen) renderHonor();
+  paydayCheck();
+}
+function switchTab(t) {
+  APP.tab = t; APP.calAnim = t === 'calendar';
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  $$('.tab').forEach(s => s.classList.remove('active', 'enter'));
+  const sec = $('#tab-' + t); sec.classList.add('active'); void sec.offsetWidth; sec.classList.add('enter');
+  clearTimeout(switchTab.tm); switchTab.tm = setTimeout(() => sec.classList.remove('enter'), 1400);
+  moveInd(); render(true);
+}
+function paydayCheck() {
+  if (!APP.S) return;
+  const today = todayDs(), k = 'starpunch.payday.' + today;
+  if (APP.S.nextPayDate !== today || ls.get(k) || UI.modalOpen) return;
+  if (!emps().some(e => e.lastPayroll && e.lastPayroll.payDate === today)) return;
+  ls.set(k, '1');
+  const [y, m] = R.splitDs(today), prev = R.mkey(y, m - 1);
+  setTimeout(() => {
+    Snd.coin(); FX.coins(90); FX.fireworks(8); setTimeout(() => FX.confetti(160), 600);
+    celebrate({ emoji: '💰', title: '今天是发薪日！', sub: `${cnYm(prev)}的工资已经结算完成啦！\n辛苦一个月，今天值得好好犒劳自己 🎉\n点「我的考勤」可以查看自己的工资明细`, okText: '去看看我的工资 →' })
+      .then(v => { if (v) { APP.cal.ym = prev; switchTab('calendar'); } });
+  }, 800);
+}
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act;
+  switch (a) {
+    case 'tab': Snd.tap(); switchTab(el.dataset.tab); break;
+    case 'sound': APP.sound = !APP.sound; ls.set(K_SOUND, APP.sound ? '1' : '0'); $('#soundBtn').textContent = APP.sound ? '🔊' : '🔇'; if (APP.sound) Snd.badge(); break;
+    case 'pick': { const c = elCenter(el); APP.emp = el.dataset.id; ls.set(K_EMP, APP.emp); Snd.tap(); renderPunch(true); FX.sparkle(c[0], c[1], 24); break; }
+    case 'punch-in': case 'punch-done':
+      if (APP.busy) return; APP.busy = true;
+      try { a === 'punch-in' ? await punchIn(el) : await punchDone(el); } finally { APP.busy = false; }
+      break;
+    case 'cal-prev': case 'cal-next': { const [y, m] = R.splitDs(APP.cal.ym); APP.cal.ym = R.mkey(y, m + (a === 'cal-next' ? 1 : -1)); renderCalendar(); break; }
+    case 'cal-today': APP.cal.ym = todayDs().slice(0, 7); renderCalendar(); break;
+    case 'day': dayDetail(+el.dataset.i); break;
+  }
+});
+
+let lastMin = -1, lastDay = '';
+function tick() {
+  const st = ST(), t = nowTs(), p = R.parts(t, st);
+  setDigit($('#ckH'), pad(p.hh)); setDigit($('#ckM'), pad(p.mi)); setDigit($('#ckS'), pad(p.ss));
+  $('#ckDate').textContent = `${p.y}年${p.m + 1}月${p.d}日 · 星期${WEEK[p.dow]}`;
+  const nowM = p.min, inDL = R.hm(st.inDL), tDL = R.hm(st.taskDL), cdIn = $('#cdIn'), cdT = $('#cdTask');
+  if (nowM < inDL) { cdIn.className = 'cd ok'; cdIn.innerHTML = `<div class="k">⏰ 距上班打卡截止（${st.inDL}）</div><div class="v">${durTxt((inDL - nowM) * 60000)}</div>`; }
+  else { cdIn.className = 'cd over'; cdIn.innerHTML = `<div class="k">⏰ 上班打卡截止（${st.inDL}）</div><div class="v">已过截止时间</div>`; }
+  if (nowM < tDL) { cdT.className = 'cd ' + (tDL - nowM < 60 ? 'warn' : 'ok'); cdT.innerHTML = `<div class="k">🎯 距任务完成截止（${st.taskDL}）</div><div class="v">${durTxt((tDL - nowM) * 60000)}</div>`; }
+  else { cdT.className = 'cd over'; cdT.innerHTML = `<div class="k">🎯 任务完成截止（${st.taskDL}）</div><div class="v">今日已截止 · 辛苦了</div>`; }
+  if (TL.pct) { const v = Math.max(TL.start, Math.min(TL.end, nowM)), n = $('#tlNow'), f = $('#tlFill'); if (n) n.style.left = TL.pct(v); if (f) f.style.width = TL.pct(v); }
+  const ds = R.dkey(t, st), mm = p.hh * 60 + p.mi;
+  if (APP.S && (ds !== lastDay || mm === inDL || mm === tDL) && mm !== lastMin) { lastDay = ds; lastMin = mm; refresh(); }
+  else if (mm !== lastMin) { lastMin = mm; if (APP.tab === 'punch' && APP.S && !UI.modalOpen) renderPunch(false); }
+  setTimeout(tick, 1000 - (Date.now() % 1000) + 5);
+}
+
+/* ================= 启动 ================= */
+buildTimeline(); rotateQuote(true);
+setInterval(() => rotateQuote(false), 16000);
+setInterval(() => { if (!APP.activating && APP.key) refresh(); }, 20000);
+addEventListener('focus', () => { if (!APP.activating && APP.key) refresh(); });
+requestAnimationFrame(moveInd); setTimeout(moveInd, 300);
+setTimeout(() => $('#tab-punch').classList.remove('enter'), 1600);
+$('#soundBtn').textContent = APP.sound ? '🔊' : '🔇';
+tick();
+if (!APP.key) showActivation();
+else refresh().then(() => { lastDay = todayDs(); render(true); });
+})();
+</script>
+</body>
+</html>

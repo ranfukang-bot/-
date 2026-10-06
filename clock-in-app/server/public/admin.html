@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>星光打卡 · 管理后台</title>
+<link rel="stylesheet" href="theme.css">
+<style>
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.kpi{padding:18px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid var(--line);position:relative;overflow:hidden}
+.kpi small{color:var(--muted);font-size:12px}
+.kpi b{display:block;font-size:30px;font-weight:800;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .ico{position:absolute;right:12px;top:10px;font-size:26px;opacity:.85}
+.code-box{font-size:34px;font-weight:900;letter-spacing:6px;font-family:Consolas,"Courier New",monospace;padding:14px 18px;border-radius:16px;background:rgba(0,0,0,.3);border:1px dashed rgba(255,211,110,.5);color:var(--gold);text-align:center;user-select:all}
+.url-box{font-family:Consolas,monospace;padding:10px 14px;border-radius:12px;background:rgba(0,0,0,.3);border:1px solid var(--line);user-select:all;word-break:break-all}
+/* 考勤矩阵 */
+.mx-wrap{overflow:auto;padding-bottom:6px}
+table.mx{border-collapse:separate;border-spacing:2px;font-size:11px}
+.mx th{font-weight:500;color:var(--muted);padding:4px 2px;white-space:nowrap;text-align:center}
+.mx th.nm,.mx td.nm{text-align:left;position:sticky;left:0;z-index:2;background:#0d0e2a;padding:6px 10px;border-radius:10px;white-space:nowrap}
+.mx th.today{color:#fff}
+.mx td.c{--sc:transparent;width:25px;min-width:25px;height:28px;text-align:center;border-radius:7px;cursor:pointer;transition:.15s;font-size:12px;
+  background:color-mix(in srgb,var(--sc) 26%,rgba(255,255,255,.03));border:1px solid color-mix(in srgb,var(--sc) 45%,transparent)}
+.mx td.c:hover{transform:scale(1.18);box-shadow:0 0 16px -2px var(--sc);position:relative;z-index:1}
+.mx td.c.today{outline:2px solid #fff;outline-offset:1px}
+.mx td.c.st-future,.mx td.c.st-na{cursor:default}
+.mx td.c.ed::after{content:"✎";position:absolute;font-size:8px;margin:-6px 0 0 -2px;color:#fff}
+.mx td.s{padding:0 5px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.hist{margin-top:12px;max-height:160px;overflow:auto;font-size:12px;color:var(--muted);line-height:1.7;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.2)}
+.emo-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.emo-grid button{font-size:22px;padding:6px 0;border-radius:10px;border:1px solid transparent;background:rgba(255,255,255,.05);cursor:pointer;transition:.15s}
+.emo-grid button:hover{transform:scale(1.15)}
+.emo-grid button.on{border-color:#FF6FB5;background:rgba(255,111,181,.2)}
+.rule-box{line-height:1.9;font-size:13px}
+.rule-box b{color:var(--gold)}
+.admin-tag{font-size:11px;padding:3px 8px;border-radius:999px;background:rgba(255,211,110,.15);color:var(--gold);border:1px solid rgba(255,211,110,.4);margin-left:6px;letter-spacing:1px;vertical-align:middle}
+.log-row td{white-space:normal}
+</style>
+</head>
+<body>
+<div class="aurora"><i></i><i></i><i></i></div>
+<div class="grain"></div>
+<div id="app">
+  <div id="gate"></div>
+  <div id="main" style="display:none">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo"><span>✦</span></div>
+        <div><span class="shimmer" id="brandName">星光打卡</span><span class="admin-tag">管理后台</span><small>CONTROL CENTER</small></div>
+      </div>
+      <nav class="tabs" id="tabs">
+        <div class="tab-ind" id="tabInd"></div>
+        <button data-act="tab" data-tab="dash" class="on">📊 总览</button>
+        <button data-act="tab" data-tab="emps">👥 员工</button>
+        <button data-act="tab" data-tab="att">📅 考勤</button>
+        <button data-act="tab" data-tab="perf">📈 业绩提成</button>
+        <button data-act="tab" data-tab="pay">💰 工资结算</button>
+        <button data-act="tab" data-tab="set">⚙️ 设置</button>
+        <button data-act="tab" data-tab="log">📜 日志</button>
+      </nav>
+      <div class="top-right">
+        <button class="btn" data-act="reload" title="刷新数据">⟳ 刷新</button>
+        <button class="btn" data-act="logout">退出登录</button>
+      </div>
+    </header>
+    <main>
+      <section class="tab active" id="tab-dash"></section>
+      <section class="tab" id="tab-emps"></section>
+      <section class="tab" id="tab-att"></section>
+      <section class="tab" id="tab-perf"></section>
+      <section class="tab" id="tab-pay"></section>
+      <section class="tab" id="tab-set"></section>
+      <section class="tab" id="tab-log"></section>
+    </main>
+  </div>
+</div>
+
+<script src="rules.js"></script>
+<script src="ui.js"></script>
+<script>
+(() => {
+'use strict';
+const R = Rules;
+const { $, $$, esc, money, pick, WEEK, cnDs, cnYm, META, toast, openModal, askInput, confirmBox, csvCell, download, moveInd } = UI;
+const A = { db: null, skew: 0, terminalKey: '', tab: 'dash', attYm: null, perfYm: null };
+const st = () => A.db.settings;
+const nowTs = () => Date.now() + A.skew;
+const today = () => R.dkey(nowTs(), st());
+const curYm = () => today().slice(0, 7);
+const empOf = id => A.db.employees.find(e => e.id === id);
+const active = () => A.db.employees.filter(e => e.active !== false);
+const AVATARS = ['😊', '😎', '🤓', '🥳', '🐱', '🐶', '🦊', '🐼', '🐨', '🐯', '🦁', '🐸', '🐵', '🐰', '🐻', '🐧', '🦄', '🐳', '🌻', '🌸', '🍀', '⭐', '🚀', '🎧', '🎨', '🍉', '🍩', '🎮', '⚽', '🌈', '🔥', '💎'];
+
+/* ================= 网络 ================= */
+async function api(path, body) {
+  let r;
+  try {
+    r = await fetch(path, { method: body ? 'POST' : 'GET', cache: 'no-store', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'starpunch' }, body: body ? JSON.stringify(body) : undefined });
+  } catch (e) { throw new Error('网络连接失败'); }
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if (r.status === 401 && !path.includes('/login') && !path.includes('/setup')) { showGate(); throw new Error('登录已过期，请重新登录'); }
+  if (!r.ok) throw new Error(j.error || ('请求失败（' + r.status + '）'));
+  return j;
+}
+function apply(j) { if (j && j.db) { A.db = j.db; A.terminalKey = j.terminalKey; A.skew = j.now - Date.now(); } }
+async function load() { apply(await api('/api/admin/state')); }
+async function mutate(path, body, okMsg = '已保存 ✓') {
+  try { const j = await api(path, body); apply(j); toast(j.msg && j.msg !== 'ok' ? j.msg : okMsg, 'ok'); render(); return true; }
+  catch (e) { toast(e.message, 'err'); return false; }
+}
+
+/* ================= 登录 ================= */
+async function showGate() {
+  $('#main').style.display = 'none'; const g = $('#gate'); g.style.display = '';
+  let s; try { s = await (await fetch('/api/admin/status', { cache: 'no-store' })).json(); } catch (e) { g.innerHTML = `<div class="gate"><div class="card"><div class="lk">📡</div><h2>连接不上服务器</h2><p class="muted">请确认服务器正在运行</p><button class="btn primary" onclick="location.reload()">重试</button></div></div>`; return; }
+  if (s.loggedIn) return enter();
+  if (s.needsSetup) {
+    g.innerHTML = `<div class="gate"><div class="card"><div class="lk">🛡️</div><h2 class="shimmer">初始化管理后台</h2>
+      <p class="muted" style="line-height:1.7">第一次使用，请输入服务器启动窗口里显示的 <b style="color:var(--gold)">6 位初始化码</b>，并设置管理员密码。</p>
+      <input class="inp" id="gCode" placeholder="初始化码" autocomplete="off">
+      <input class="inp" id="gPw" type="password" placeholder="设置管理员密码（至少 6 位）" style="letter-spacing:0;font-size:15px">
+      <input class="inp" id="gPw2" type="password" placeholder="再输入一次" style="letter-spacing:0;font-size:15px">
+      <button class="btn primary" id="gOk">完成设置</button></div></div>`;
+    $('#gOk').onclick = async () => {
+      const code = $('#gCode').value.trim(), pw = $('#gPw').value, pw2 = $('#gPw2').value;
+      if (pw !== pw2) return toast('两次输入的密码不一致', 'err');
+      try { await api('/api/admin/setup', { code, password: pw }); toast('设置成功，欢迎使用 ✨', 'ok'); enter(); } catch (e) { toast(e.message, 'err'); }
+    };
+  } else {
+    g.innerHTML = `<div class="gate"><div class="card"><div class="lk">🔐</div><h2 class="shimmer">${esc(s.company || '星光打卡')} · 管理后台</h2>
+      <p class="muted">请输入管理员密码</p>
+      <input class="inp" id="gPw" type="password" placeholder="管理员密码" autocomplete="current-password">
+      <button class="btn primary" id="gOk">登 录</button></div></div>`;
+    const go = async () => { try { await api('/api/admin/login', { password: $('#gPw').value }); enter(); } catch (e) { toast(e.message, 'err'); const c = $('#gate .card'); c.classList.add('shake'); setTimeout(() => c.classList.remove('shake'), 500); } };
+    $('#gOk').onclick = go; $('#gPw').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    setTimeout(() => $('#gPw').focus(), 50);
+  }
+}
+async function enter() {
+  try { await load(); } catch (e) { return toast(e.message, 'err'); }
+  $('#gate').style.display = 'none'; $('#main').style.display = '';
+  render(); requestAnimationFrame(moveInd); setTimeout(moveInd, 200);
+}
+
+/* ================= 渲染 ================= */
+function render() {
+  $('#brandName').textContent = (st().company ? st().company + ' · ' : '') + '星光打卡';
+  document.title = `${st().company || '星光打卡'} · 管理后台`;
+  ({ dash: renderDash, emps: renderEmps, att: renderAtt, perf: renderPerf, pay: renderPay, set: renderSet, log: renderLog })[A.tab]();
+}
+function switchTab(t) {
+  A.tab = t;
+  $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  $$('.tab').forEach(s => s.classList.remove('active', 'enter'));
+  const sec = $('#tab-' + t); sec.classList.add('active'); void sec.offsetWidth; sec.classList.add('enter');
+  clearTimeout(switchTab.tm); switchTab.tm = setTimeout(() => sec.classList.remove('enter'), 1200);
+  moveInd(); render();
+}
+const monthNav = (ym, prefix) => `<button class="btn" data-act="${prefix}-prev">‹</button><div class="cal-title shimmer" style="min-width:130px;font-size:20px">${cnYm(ym)}</div><button class="btn" data-act="${prefix}-next">›</button><button class="btn" data-act="${prefix}-now">本月</button>`;
+const shiftYm = (ym, d) => { const [y, m] = R.splitDs(ym); return R.mkey(y, m + d); };
+const crTxt = e => e.commissionRate == null ? `默认 ${st().commissionRate}%` : `${e.commissionRate}%`;
+
+/* ---------- 总览 ---------- */
+function renderDash() {
+  const t = nowTs(), s = st(), ds = today(), p = R.parts(t, s), list = active();
+  const rows = list.map(e => ({ e, ev: R.evalDay(A.db, e, ds, t), mc: R.computeMonth(A.db, e, p.y, p.m, t) }));
+  const arrived = rows.filter(r => r.ev.rec && r.ev.rec.in).length, done = rows.filter(r => r.ev.rec && r.ev.rec.done).length;
+  const late = rows.filter(r => r.ev.rec && r.ev.rec.in && R.minOf(r.ev.rec.in, s) >= R.hm(s.inDL)).length;
+  const monthTotal = rows.reduce((a, r) => a + r.mc.amount, 0), commTotal = rows.reduce((a, r) => a + r.mc.commission, 0);
+  const unpaid = A.db.payrolls.filter(x => !x.paid), unpaidSum = unpaid.reduce((a, x) => a + x.amount, 0);
+  const pd = R.nextPayDate(A.db, t), pdDays = Math.round((Date.parse(pd) - Date.parse(ds)) / 864e5);
+  $('#tab-dash').innerHTML = `
+    <div class="kpis rise" style="--d:0">
+      <div class="kpi"><span class="ico">👥</span><small>今日应到</small><b>${list.length}</b></div>
+      <div class="kpi"><span class="ico">☀️</span><small>已到岗</small><b style="color:var(--cyan)">${arrived}</b></div>
+      <div class="kpi"><span class="ico">🏆</span><small>已完成任务</small><b style="color:var(--mint)">${done}</b></div>
+      <div class="kpi"><span class="ico">🌤️</span><small>今日迟到</small><b style="color:var(--amber)">${late}</b></div>
+      <div class="kpi"><span class="ico">📈</span><small>本月工资累计（含提成）</small><b class="money" style="font-size:26px">${money(monthTotal)}</b></div>
+      <div class="kpi"><span class="ico">💸</span><small>待发放工资</small><b style="color:var(--gold);font-size:26px">${money(unpaidSum)}</b></div>
+    </div>
+    <div class="grid g-top mt">
+      <div class="card rise" style="--d:1">
+        <div class="sect-title"><h3>📍 今日打卡（${cnDs(ds)} 周${WEEK[p.dow]}）</h3><span class="sp"></span><span class="muted">每 30 秒自动刷新</span></div>
+        ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>员工</th><th>上班</th><th>完成</th><th>状态</th><th class="num">今日工资</th><th>工作记录</th></tr></thead><tbody>
+          ${rows.map(({ e, ev, mc }) => { const r = ev.rec || {}; return `<tr><td>${esc(e.avatar)} <b>${esc(e.name)}</b></td>
+            <td>${r.in ? R.fmtTS(r.in, s) : '<span class="dim">—</span>'}</td><td>${r.done ? R.fmtTS(r.done, s) : '<span class="dim">—</span>'}</td>
+            <td><span class="pill ${META[ev.code].c}">${META[ev.code].i} ${ev.label}</span></td>
+            <td class="num">${ev.final ? money(ev.ratio * mc.rate) : '<span class="dim">待定</span>'}</td>
+            <td style="white-space:normal;max-width:260px" class="muted">${esc(r.note || '')}</td></tr>`; }).join('')}
+        </tbody></table></div>` : `<div class="empty"><div class="empty-ico">🧑‍🤝‍🧑</div><h3>还没有员工</h3><p class="muted">去「员工」页添加</p></div>`}
+      </div>
+      <div>
+        <div class="card rise" style="--d:2">
+          <div class="stat-head"><h3>🔑 终端激活码</h3><button class="btn sm" data-act="copy-key">复制</button></div>
+          <div class="code-box">${esc(A.terminalKey)}</div>
+          <p class="hint" style="margin-top:12px">员工电脑第一次打开打卡页时输入此码。员工打卡地址：</p>
+          <div class="url-box">${esc(location.origin)}/</div>
+        </div>
+        <div class="card mt rise" style="--d:3">
+          <div class="stat-head"><h3>💰 发薪</h3><span class="muted">每月 ${s.payDay} 日</span></div>
+          <div class="kv"><span class="muted">下一个发薪日</span><span>${cnDs(pd)}${pdDays === 0 ? ' <b class="unpaid">今天</b>' : `（${pdDays} 天后）`}</span></div>
+          <div class="kv"><span class="muted">本月提成累计</span><span>${money(commTotal)}</span></div>
+          <div class="kv"><span class="muted">待发放记录</span><span>${unpaid.length} 条 <button class="btn sm" data-act="tab" data-tab="pay" style="margin-left:6px">去处理</button></span></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ---------- 员工 ---------- */
+function renderEmps() {
+  const t = nowTs(), p = R.parts(t, st());
+  $('#tab-emps').innerHTML = `<div class="card rise">
+    <div class="sect-title"><h3>👥 员工管理</h3><span class="sp"></span><button class="btn primary" data-act="emp-add">＋ 添加员工</button></div>
+    ${A.db.employees.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>员工</th><th>月薪</th><th>提成比例</th><th>入职日期</th><th>打卡密码</th><th>状态</th><th class="num">本月累计</th><th></th></tr></thead><tbody>
+      ${A.db.employees.map(e => { const mc = R.computeMonth(A.db, e, p.y, p.m, t); return `<tr style="${e.active === false ? 'opacity:.5' : ''}">
+        <td><span style="font-size:20px">${esc(e.avatar)}</span> <b>${esc(e.name)}</b></td><td>${money(e.salary)}</td><td>${crTxt(e)}</td><td>${e.hireDate || '—'}</td>
+        <td>${e.hasPin ? '🔑 已设置' : '<span class="dim">未设置</span>'}</td>
+        <td>${e.active === false ? `<span class="dim">已停用（${e.leftAt || ''}）</span>` : '<span class="paid">在职</span>'}</td>
+        <td class="num" style="color:var(--gold)">${money(mc.amount)}</td>
+        <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="emp-edit" data-id="${e.id}">编辑</button>
+          <button class="btn sm" data-act="emp-toggle" data-id="${e.id}">${e.active === false ? '启用' : '停用'}</button>
+          <button class="btn sm danger" data-act="emp-del" data-id="${e.id}">删除</button></div></td></tr>`; }).join('')}
+    </tbody></table></div>` : `<div class="empty"><div class="empty-ico">🧑‍🤝‍🧑</div><h3>还没有员工</h3><p class="muted">点击右上角「添加员工」开始吧</p></div>`}
+    <p class="hint">提成比例留空 = 使用「设置」里的默认比例（当前 ${st().commissionRate}%）。员工离职请用「停用」，历史记录会保留。</p></div>`;
+}
+function empForm(e) {
+  const isNew = !e;
+  e = e || { name: '', avatar: pick(AVATARS), salary: st().salary, commissionRate: null, hireDate: today() };
+  let av = e.avatar;
+  const m = openModal(`
+    <h2>${isNew ? '✨ 添加员工' : '✎ 编辑员工'}</h2>
+    <div class="form" style="margin-top:14px">
+      <div><label class="f">姓名</label><input class="inp" id="efName" value="${esc(e.name)}" maxlength="16" placeholder="例如：小美"></div>
+      <div><label class="f">月薪（元）</label><input class="inp" id="efSalary" type="number" min="0" step="100" value="${e.salary}"></div>
+      <div><label class="f">提成比例 %（留空 = 默认 ${st().commissionRate}%）</label><input class="inp" id="efComm" type="number" min="0" max="100" step="0.1" value="${e.commissionRate ?? ''}" placeholder="默认"></div>
+      <div><label class="f">入职日期（之前的日子不计考勤）</label><input class="inp" id="efHire" type="date" value="${e.hireDate || ''}"></div>
+      <div class="full"><label class="f">打卡密码（防止代打卡，4–12 位）</label>
+        ${isNew ? `<input class="inp" id="efPin" type="password" maxlength="12" placeholder="留空则打卡无需密码" autocomplete="new-password">`
+          : `<div class="row" style="flex-wrap:nowrap"><select class="inp" id="efPinAct" style="max-width:180px"><option value="keep">${e.hasPin ? '保持现有密码' : '保持不设密码'}</option><option value="set">设置新密码</option>${e.hasPin ? '<option value="clear">清除密码</option>' : ''}</select>
+            <input class="inp" id="efPin" type="password" maxlength="12" placeholder="新密码" autocomplete="new-password" style="display:none"></div>`}
+      </div>
+      <div class="full"><label class="f">头像</label><div class="emo-grid" id="efAv">${AVATARS.map(a => `<button type="button" class="${a === av ? 'on' : ''}" data-a="${a}">${a}</button>`).join('')}</div></div>
+    </div>
+    <div class="row end" style="margin-top:18px"><button class="btn" data-x>取消</button><button class="btn primary" id="efOk">${isNew ? '添加' : '保存'}</button></div>`);
+  $('#efAv', m.el).onclick = ev => { const b = ev.target.closest('[data-a]'); if (!b) return; av = b.dataset.a; $$('#efAv button', m.el).forEach(x => x.classList.toggle('on', x === b)); };
+  const pa = $('#efPinAct', m.el); if (pa) pa.onchange = () => { $('#efPin', m.el).style.display = pa.value === 'set' ? '' : 'none'; };
+  setTimeout(() => $('#efName', m.el).focus(), 60);
+  $('#efOk', m.el).onclick = async () => {
+    const pin = $('#efPin', m.el).value.trim();
+    const pinAction = isNew ? (pin ? 'set' : 'keep') : pa.value;
+    const ok = await mutate('/api/admin/employee', {
+      id: isNew ? undefined : e.id, name: $('#efName', m.el).value, salary: $('#efSalary', m.el).value, commissionRate: $('#efComm', m.el).value,
+      hireDate: $('#efHire', m.el).value, avatar: av, pinAction, pin
+    }, isNew ? '员工已添加 ✨' : '已保存 ✓');
+    if (ok) m.close();
+  };
+}
+
+/* ---------- 考勤矩阵 ---------- */
+function renderAtt() {
+  const ym = A.attYm = A.attYm || curYm(), [y, m] = R.splitDs(ym), n = R.daysIn(y, m), t = nowTs(), s = st(), td = today();
+  const first = R.ymd(y, m, 1), last = R.ymd(y, m, n);
+  const list = A.db.employees.filter(e => (!e.hireDate || e.hireDate <= last) && (!e.leftAt || e.leftAt >= first));
+  let head = '<th class="nm">员工</th>';
+  for (let d = 1; d <= n; d++) { const ds = R.ymd(y, m, d); head += `<th class="${ds === td ? 'today' : ''}">${d}<br><span class="dim">${WEEK[R.dowOf(ds)]}</span></th>`; }
+  head += '<th>✨</th><th>🌤️</th><th>⏳</th><th>🌧️</th><th>💤</th><th>基本工资</th>';
+  const body = list.map(e => {
+    const mc = R.computeMonth(A.db, e, y, m, t);
+    let tds = `<td class="nm">${esc(e.avatar)} ${esc(e.name)}</td>`;
+    for (let d = 1; d <= n; d++) {
+      const ds = R.ymd(y, m, d), ev = R.evalDay(A.db, e, ds, t), r = ev.rec || {};
+      const tip = `${ds} ${ev.label}${r.in ? '\n上班 ' + R.fmtTS(r.in, s) : ''}${r.done ? '\n完成 ' + R.fmtTS(r.done, s) : ''}${r.note ? '\n' + r.note : ''}${r.edited ? '\n（管理员修改过）' : ''}`;
+      tds += `<td class="c ${META[ev.code].c} ${ds === td ? 'today' : ''} ${r.edited ? 'ed' : ''}" title="${esc(tip)}" ${ev.code === 'future' || ev.code === 'na' ? '' : `data-act="att-cell" data-emp="${e.id}" data-ds="${ds}"`}>${META[ev.code].i}</td>`;
+    }
+    tds += `<td class="s" style="color:var(--mint)">${mc.counts.normal}</td><td class="s" style="color:var(--amber)">${mc.counts.late}</td><td class="s" style="color:var(--orange)">${mc.counts.undone}</td><td class="s" style="color:var(--red)">${mc.counts.zero}</td><td class="s">${mc.counts.absent}</td><td class="s" style="color:var(--gold)">${money(mc.base)}</td>`;
+    return `<tr>${tds}</tr>`;
+  }).join('');
+  const L = [['normal', '正常 · 全薪'], ['late', '迟到 · 半薪'], ['undone', '准时但超时 · ' + R.ratioTxt(s.undoneRatio)], ['zero', '迟到且超时 · 无薪'], ['absent', '缺勤'], ['waiting', '今日进行中']];
+  $('#tab-att').innerHTML = `<div class="card rise">
+    <div class="cal-head">${monthNav(ym, 'att')}<span class="sp"></span><button class="btn" data-act="att-export">⬇ 导出本月考勤 CSV</button></div>
+    ${list.length ? `<div class="mx-wrap"><table class="mx"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>` : '<div class="empty"><div class="empty-ico">📅</div><h3>本月没有员工</h3></div>'}
+    <div class="legend">${L.map(([c, t]) => `<span class="pill ${META[c].c}">${META[c].i} ${t}</span>`).join('')}<span class="hint" style="margin-left:auto">鼠标悬停看详情 · 点击格子补卡/修改（每次修改都会记录在日志里）</span></div>
+  </div>`;
+}
+function editDay(empId, ds) {
+  const e = empOf(empId), s = st(), r = A.db.records[R.recKey(empId, ds)] || {}, ev = R.evalDay(A.db, e, ds, nowTs());
+  const fmt = v => v ? R.fmtTS(v, s) : '无';
+  const m = openModal(`
+    <h2>✎ 补卡 / 修改考勤</h2><p class="muted">${esc(e.avatar)} ${esc(e.name)} · ${cnDs(ds)} 周${WEEK[R.dowOf(ds)]} · 当前：<span class="pill ${META[ev.code].c}">${META[ev.code].i} ${ev.label}</span></p>
+    <div class="form" style="margin-top:12px">
+      <div><label class="f">上班打卡时间（留空 = 没打卡）</label><input class="inp" type="time" step="1" id="edIn" value="${r.in ? R.fmtTS(r.in, s) : ''}"></div>
+      <div><label class="f">任务完成时间（留空 = 未完成）</label><input class="inp" type="time" step="1" id="edDone" value="${r.done ? R.fmtTS(r.done, s) : ''}"></div>
+      <div class="full"><label class="f">工作记录</label><textarea class="inp" id="edNote" maxlength="200">${esc(r.note || '')}</textarea></div>
+      <div class="full"><label class="f">修改原因（必填，会留痕）</label><input class="inp" id="edWhy" placeholder="例如：忘记打卡，已核实"></div>
+    </div>
+    ${(r.editLog || []).length ? `<div class="hist"><b>修改历史</b><br>${r.editLog.map(l => `${R.fmtDT(l.at, s)}：上班 ${fmt(l.from.in)}→${fmt(l.to ? l.to.in : null)}，完成 ${fmt(l.from.done)}→${fmt(l.to ? l.to.done : null)}；${esc(l.why || '')}`).join('<br>')}</div>` : ''}
+    <div class="row end" style="margin-top:16px"><button class="btn" data-x>取消</button><button class="btn primary" id="edOk">保存</button></div>`);
+  $('#edOk', m.el).onclick = async () => {
+    const ok = await mutate('/api/admin/record', { empId, ds, in: $('#edIn', m.el).value, done: $('#edDone', m.el).value, note: $('#edNote', m.el).value, why: $('#edWhy', m.el).value }, '考勤已更新 ✓');
+    if (ok) m.close();
+  };
+}
+
+/* ---------- 业绩提成 ---------- */
+function renderPerf() {
+  const ym = A.perfYm = A.perfYm || curYm(), [y, m] = R.splitDs(ym), t = nowTs(), s = st();
+  const first = R.ymd(y, m, 1), last = R.ymd(y, m, R.daysIn(y, m));
+  const list = A.db.employees.filter(e => (!e.hireDate || e.hireDate <= last) && (!e.leftAt || e.leftAt >= first));
+  const items = A.db.perf.filter(p => p.date.slice(0, 7) === ym).sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
+  const sums = list.map(e => ({ e, mc: R.computeMonth(A.db, e, y, m, t) }));
+  const defDate = ym === curYm() ? today() : first;
+  $('#tab-perf').innerHTML = `
+    <div class="grid g-2">
+      <div class="card rise" style="--d:0">
+        <div class="sect-title"><h3>➕ 录入业绩</h3></div>
+        <div class="form">
+          <div><label class="f">员工</label><select class="inp" id="pfEmp">${active().map(e => `<option value="${e.id}">${esc(e.avatar)} ${esc(e.name)}（${crTxt(e)}）</option>`).join('')}</select></div>
+          <div><label class="f">日期</label><input class="inp" type="date" id="pfDate" value="${defDate}"></div>
+          <div><label class="f">业绩金额（元，退款可填负数）</label><input class="inp" type="number" step="0.01" id="pfAmt" placeholder="例如 1280"></div>
+          <div><label class="f">备注</label><input class="inp" id="pfNote" maxlength="100" placeholder="例如：订单号 / 客户名"></div>
+        </div>
+        <div class="row end" style="margin-top:14px"><button class="btn primary" data-act="perf-add" ${active().length ? '' : 'disabled'}>录入</button></div>
+      </div>
+      <div class="card rise" style="--d:1">
+        <div class="sect-title"><h3>📐 提成规则</h3></div>
+        <div class="rule-box">
+          • 提成 = <b>当月业绩合计 × 提成比例</b>，计入当月工资，在下月 ${s.payDay} 日随工资一起结算发放<br>
+          • 默认提成比例：<b>${s.commissionRate}%</b>（在「设置」里修改）<br>
+          • 每个员工可以单独设置比例（「员工」页 → 编辑），留空则用默认比例<br>
+          • 比例为 0% 时只记录业绩，不产生提成<br>
+          • 修改已结算但未发放月份的业绩，结算金额会自动更新；已发放的不会变
+        </div>
+      </div>
+    </div>
+    <div class="card mt rise" style="--d:2">
+      <div class="cal-head">${monthNav(ym, 'perf')}</div>
+      ${sums.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>员工</th><th class="num">业绩合计</th><th class="num">提成比例</th><th class="num">提成金额</th><th class="num">基本工资</th><th class="num">合计</th></tr></thead><tbody>
+        ${sums.map(({ e, mc }) => `<tr><td>${esc(e.avatar)} <b>${esc(e.name)}</b></td><td class="num">${money(mc.perfTotal)}</td><td class="num">${mc.commissionRate}%</td><td class="num" style="color:var(--pink)">${money(mc.commission)}</td><td class="num">${money(mc.base)}</td><td class="num"><b style="color:var(--gold)">${money(mc.amount)}</b></td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="muted">本月没有员工</div>'}
+      <h3 style="margin:18px 0 8px">明细（${items.length} 条）</h3>
+      ${items.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>日期</th><th>员工</th><th class="num">金额</th><th>备注</th><th>录入时间</th><th></th></tr></thead><tbody>
+        ${items.map(it => { const e = empOf(it.empId); return `<tr><td>${it.date}</td><td>${e ? esc(e.avatar + ' ' + e.name) : '<span class="dim">已删除</span>'}</td><td class="num" style="color:${it.amount < 0 ? 'var(--red)' : 'var(--txt)'}">${money(it.amount)}</td><td>${esc(it.note)}</td><td class="muted">${R.fmtDT(it.createdAt, s)}</td><td><button class="btn sm danger" data-act="perf-del" data-id="${it.id}">删除</button></td></tr>`; }).join('')}
+      </tbody></table></div>` : '<div class="hint">本月还没有业绩记录</div>'}
+    </div>`;
+}
+
+/* ---------- 工资结算 ---------- */
+function renderPay() {
+  const t = nowTs(), s = st(), p = R.parts(t, s), ym = curYm(), td = today();
+  const pd = R.nextPayDate(A.db, t), [py, pm] = R.splitDs(pd), settleYm = R.mkey(py, pm - 1);
+  const cur = active().map(e => ({ e, c: R.computeMonth(A.db, e, p.y, p.m, t) }));
+  const groups = {}; A.db.payrolls.forEach(x => { (groups[x.payDate] = groups[x.payDate] || []).push(x); });
+  const dates = Object.keys(groups).sort().reverse();
+  const totalPaid = A.db.payrolls.filter(x => x.paid).reduce((a, x) => a + x.amount, 0);
+  const [iy, im] = R.splitDs(s.installedAt), firstPay = R.ymd(iy, im + 1, s.payDay);
+  $('#tab-pay').innerHTML = `
+    <div class="grid g-2">
+      <div class="card rise" style="--d:0">
+        <div class="stat-head"><h3>🎁 下一个发薪日</h3><span class="muted">每月 ${s.payDay} 日自动结算</span></div>
+        <div style="font-size:26px;font-weight:900" class="shimmer">${cnDs(pd)} · 周${WEEK[R.dowOf(pd)]}${pd === td ? ' · 今天' : ''}</div>
+        <div class="muted" style="margin-top:6px">将结算 <b style="color:var(--txt)">${cnYm(settleYm)}</b> 的工资 · 累计已发放 <b style="color:var(--gold)">${money(totalPaid)}</b></div>
+      </div>
+      <div class="card rise" style="--d:1">
+        <div class="stat-head"><h3>📜 结算规则</h3></div>
+        <div class="rule-box">
+          • 每天都要打卡，日薪 = 月薪 ÷ 当月天数（满勤即拿满月薪）<br>
+          • <b>${s.inDL} 前</b>上班 且 <b>${s.taskDL} 前</b>完成 → 全薪；${s.inDL} 后上班、${s.taskDL} 前完成 → 半薪<br>
+          • ${s.inDL} 后上班 且 ${s.taskDL} 前未完成 → 无薪；准时但未按时完成 → ${R.ratioTxt(s.undoneRatio)}<br>
+          • 实发 = 基本工资 + 提成（当月业绩 × 提成比例）
+        </div>
+      </div>
+    </div>
+    <div class="card mt rise" style="--d:2">
+      <div class="sect-title"><h3>⚡ 本月实时累计（${cnYm(ym)}）</h3><span class="sp"></span><span class="muted">将于 ${cnDs(R.ymd(p.y, p.m + 1, s.payDay))} 发放</span></div>
+      ${cur.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>员工</th><th>应出勤</th><th>✨正常</th><th>🌤️迟到</th><th>⏳超时</th><th>🌧️无薪</th><th>💤缺勤</th><th class="num">日薪</th><th class="num">基本工资</th><th class="num">提成</th><th class="num">合计</th><th class="num">本月最高可得</th></tr></thead><tbody>
+        ${cur.map(({ e, c }) => `<tr><td>${esc(e.avatar)} <b>${esc(e.name)}</b></td><td>${c.eligible}</td><td>${c.counts.normal}</td><td>${c.counts.late}</td><td>${c.counts.undone}</td><td>${c.counts.zero}</td><td>${c.counts.absent}</td>
+          <td class="num">${money(c.rate)}</td><td class="num">${money(c.base)}</td><td class="num" style="color:var(--pink)">${money(c.commission)}</td><td class="num"><b style="color:var(--gold)">${money(c.amount)}</b></td><td class="num muted">${money(c.maxPossible)}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="muted">暂无员工</div>'}
+    </div>
+    <div class="card mt rise" style="--d:3">
+      <div class="sect-title"><h3>🗂️ 历次发薪结算记录</h3><span class="sp"></span><button class="btn" data-act="pay-export" ${dates.length ? '' : 'disabled'}>⬇ 导出全部结算 CSV</button></div>
+      ${dates.length ? dates.map(dt => {
+        const list = groups[dt], tot = list.reduce((a, x) => a + x.amount, 0), allPaid = list.every(x => x.paid);
+        return `<div class="p-group"><div class="p-group-h"><span class="t">📅 ${cnDs(dt)} 发放</span><span class="pill st-pending">${cnYm(list[0].period)}工资</span>
+          <span class="sp"></span><span class="muted">合计</span><span class="money sm" style="font-size:22px">${money(tot)}</span>
+          ${allPaid ? '<span class="paid">✓ 全部已发放</span>' : `<button class="btn gold sm" data-act="pay-all" data-date="${dt}">一键标记已发放</button>`}</div>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>员工</th><th>月薪</th><th>天数</th><th>正常</th><th>迟到</th><th>超时</th><th>无薪</th><th>缺勤</th><th class="num">基本工资</th><th class="num">业绩</th><th class="num">提成</th><th class="num">实发</th><th>状态</th><th></th></tr></thead><tbody>
+          ${list.map(x => `<tr><td>${esc(x.avatar)} <b>${esc(x.empName)}</b></td><td>${money(x.salary)}</td><td>${x.eligible}</td><td>${x.counts.normal}</td><td>${x.counts.late}</td><td>${x.counts.undone}</td><td>${x.counts.zero}</td><td>${x.counts.absent}</td>
+            <td class="num">${money(x.base)}</td><td class="num">${money(x.perfTotal)}</td><td class="num" style="color:var(--pink)">${money(x.commission)}${x.commissionRate ? `<br><span class="dim">${x.commissionRate}%</span>` : ''}</td><td class="num"><b style="color:var(--gold)">${money(x.amount)}</b></td>
+            <td>${x.paid ? `<span class="paid">✓ 已发放</span><br><span class="dim">${R.dkey(x.paidAt, s)}</span>` : `<span class="unpaid">待发放</span>`}</td>
+            <td><div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="pay-slip" data-id="${x.id}">工资条</button>
+              ${x.paid ? `<button class="btn sm" data-act="pay-unmark" data-id="${x.id}">撤销</button>` : `<button class="btn sm" data-act="pay-recalc" data-id="${x.id}">重算</button><button class="btn sm gold" data-act="pay-mark" data-id="${x.id}">发放</button>`}</div></td></tr>`).join('')}
+          </tbody></table></div></div>`;
+      }).join('') : `<div class="empty"><div class="empty-ico">🗓️</div><h3>还没有结算记录</h3><p class="muted">每月 ${s.payDay} 日会自动生成上个月的工资结算，并永久保存在这里。<br>第一次结算：${cnDs(firstPay > td ? firstPay : pd)}</p></div>`}
+    </div>`;
+}
+function payslip(x) {
+  const s = st();
+  const rows = [['员工', x.empName], ['结算月份', cnYm(x.period)], ['发放日期', cnDs(x.payDate)], ['月薪标准', money(x.salary)], ['当月天数 / 应出勤', `${x.days} / ${x.eligible} 天`], ['日薪', money(x.rate)],
+    ['正常出勤（全薪）', x.counts.normal + ' 天'], ['迟到（半薪）', x.counts.late + ' 天'], ['任务超时', x.counts.undone + ' 天'], ['迟到且超时（无薪）', x.counts.zero + ' 天'], ['缺勤', x.counts.absent + ' 天'],
+    ['基本工资', money(x.base)], ['当月业绩', money(x.perfTotal)], ['提成比例', (x.commissionRate || 0) + '%'], ['提成', money(x.commission)], ['实发工资', money(x.amount)],
+    ['状态', x.paid ? '已发放 ' + R.fmtDT(x.paidAt, s) : '待发放']];
+  const m = openModal(`<div style="text-align:center"><div style="font-size:44px">🧾</div><h2 class="shimmer" style="font-size:24px">${esc(s.company)} 工资条</h2></div>
+    <div style="margin-top:12px">${rows.map(([a, b]) => `<div class="kv"><span class="muted">${a}</span><span>${esc(b)}</span></div>`).join('')}</div>
+    <div class="row end" style="margin-top:16px"><button class="btn" data-x>关闭</button><button class="btn primary" id="psPrint">🖨️ 打印</button></div>`);
+  $('#psPrint', m.el).onclick = () => {
+    const w = window.open('', '_blank', 'width=520,height=760'); if (!w) return toast('浏览器拦截了弹窗', 'err');
+    w.document.write(`<!doctype html><meta charset="utf-8"><title>工资条</title><style>body{font-family:"Microsoft YaHei",sans-serif;padding:30px;color:#222}h1{text-align:center;font-size:22px}table{width:100%;border-collapse:collapse;margin-top:16px}td{border:1px solid #999;padding:8px 12px}td:first-child{background:#f4f4f8;width:42%}.sig{margin-top:40px;display:flex;justify-content:space-between}</style>
+      <h1>${esc(s.company)} 工资条</h1><table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table><div class="sig"><span>员工签字：__________</span><span>日期：__________</span></div><script>setTimeout(()=>print(),200)<\/script>`);
+    w.document.close();
+  };
+}
+
+/* ---------- 设置 ---------- */
+function renderSet() {
+  const s = st();
+  $('#tab-set').innerHTML = `
+    <div class="grid g-2">
+      <div class="card rise" style="--d:0">
+        <div class="sect-title"><h3>📐 规则设置</h3></div>
+        <div class="form">
+          <div class="full"><label class="f">团队名称</label><input class="inp" id="sCompany" value="${esc(s.company)}" maxlength="20"></div>
+          <div><label class="f">新员工默认月薪（元）</label><input class="inp" id="sSalary" type="number" min="0" step="100" value="${s.salary}"></div>
+          <div><label class="f">默认提成比例（%）</label><input class="inp" id="sComm" type="number" min="0" max="100" step="0.1" value="${s.commissionRate}"></div>
+          <div><label class="f">每月发薪日（1–28）</label><input class="inp" id="sPayDay" type="number" min="1" max="28" value="${s.payDay}"></div>
+          <div><label class="f">准时打卡、但任务截止前未完成时</label><select class="inp" id="sUndone">${[[1, '当日全薪'], [0.5, '当日半薪（默认）'], [0, '当日无薪']].map(([v, t]) => `<option value="${v}" ${+s.undoneRatio === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+          <div><label class="f">上班打卡截止（此时间之前算准时）</label><input class="inp" id="sIn" type="time" value="${s.inDL}"></div>
+          <div><label class="f">任务完成截止</label><input class="inp" id="sTask" type="time" value="${s.taskDL}"></div>
+        </div>
+        <p class="hint">没有休息日：每天都需要打卡，日薪 = 月薪 ÷ 当月天数。修改规则会影响尚未结算的月份。</p>
+        <div class="row end"><button class="btn primary" data-act="set-save">保存设置</button></div>
+      </div>
+      <div>
+        <div class="card rise" style="--d:1">
+          <div class="sect-title"><h3>🔑 打卡终端</h3></div>
+          <div class="code-box">${esc(A.terminalKey)}</div>
+          <p class="hint" style="margin-top:10px">员工电脑第一次打开打卡页时需要输入此激活码。如怀疑泄露，可以更换（所有打卡电脑需重新输入）。</p>
+          <div class="row end"><button class="btn danger" data-act="key-reset">更换激活码</button></div>
+        </div>
+        <div class="card mt rise" style="--d:2">
+          <div class="sect-title"><h3>🛡️ 管理员密码</h3></div>
+          <div class="form">
+            <div class="full"><input class="inp" id="pwOld" type="password" placeholder="原密码" autocomplete="current-password"></div>
+            <div><input class="inp" id="pwNew" type="password" placeholder="新密码（至少 6 位）" autocomplete="new-password"></div>
+            <div><input class="inp" id="pwNew2" type="password" placeholder="再输入一次" autocomplete="new-password"></div>
+          </div>
+          <div class="row end" style="margin-top:12px"><button class="btn" data-act="pw-save">修改密码</button></div>
+        </div>
+        <div class="card mt rise" style="--d:3">
+          <div class="sect-title"><h3>💾 数据备份</h3></div>
+          <p class="muted" style="line-height:1.8;margin-top:0">服务器每天自动备份一次（保留 90 天，在服务器 <code>data/backups</code> 目录）。<br>也可以手动下载一份完整备份保存到自己电脑上。</p>
+          <div class="row"><a class="btn gold" href="/api/admin/backup" download style="text-decoration:none">⬇ 下载完整备份</a><button class="btn" data-act="restore">⬆ 从备份恢复</button></div>
+          <input type="file" id="restoreFile" accept=".json,application/json" style="display:none">
+          <p class="hint">支持导入旧版单机打卡软件导出的备份文件。</p>
+        </div>
+      </div>
+    </div>`;
+  $('#restoreFile').onchange = ev => { const f = ev.target.files[0]; if (f) restore(f); ev.target.value = ''; };
+}
+function restore(file) {
+  const rd = new FileReader();
+  rd.onload = async () => {
+    let d; try { d = JSON.parse(rd.result); } catch (e) { return toast('文件不是有效的备份', 'err'); }
+    if (!d || !Array.isArray(d.employees)) return toast('文件不是有效的备份', 'err');
+    if (!await confirmBox({ title: '从备份恢复？', icon: '⚠️', danger: true, okText: '确认恢复', text: `备份包含 ${d.employees.length} 位员工、${Object.keys(d.records || {}).length} 条打卡记录。<br><b style="color:var(--red)">服务器上当前的数据将被覆盖</b>（管理员密码和激活码不变）。` })) return;
+    mutate('/api/admin/restore', { data: d }, '数据已恢复 ✓');
+  };
+  rd.readAsText(file);
+}
+
+/* ---------- 日志 ---------- */
+function renderLog() {
+  const s = st(), list = A.db.audit.slice().reverse();
+  $('#tab-log').innerHTML = `<div class="card rise"><div class="sect-title"><h3>📜 操作日志</h3><span class="sp"></span><span class="muted">最近 ${list.length} 条 · 所有管理操作都会记录在这里</span></div>
+    ${list.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>时间</th><th>操作</th><th>详情</th><th>来源 IP</th></tr></thead><tbody>
+      ${list.map(l => `<tr class="log-row"><td style="white-space:nowrap">${R.fmtDT(l.at, s)}</td><td style="white-space:nowrap"><b>${esc(l.action)}</b></td><td>${esc(l.detail)}</td><td class="muted" style="white-space:nowrap">${esc(l.ip)}</td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="hint">暂无记录</div>'}</div>`;
+}
+
+/* ================= 事件 ================= */
+document.addEventListener('click', async ev => {
+  const el = ev.target.closest('[data-act]'); if (!el) return;
+  const a = el.dataset.act;
+  switch (a) {
+    case 'tab': switchTab(el.dataset.tab); break;
+    case 'reload': try { await load(); render(); toast('已刷新', 'ok'); } catch (e) { toast(e.message, 'err'); } break;
+    case 'logout': await api('/api/admin/logout', {}).catch(() => {}); A.db = null; showGate(); break;
+    case 'copy-key': try { await navigator.clipboard.writeText(A.terminalKey); toast('已复制激活码', 'ok'); } catch (e) { toast('复制失败，请手动选中复制', 'err'); } break;
+    case 'emp-add': empForm(null); break;
+    case 'emp-edit': empForm(empOf(el.dataset.id)); break;
+    case 'emp-toggle': {
+      const e = empOf(el.dataset.id);
+      if (e.active !== false && !await confirmBox({ title: `停用 ${e.name}？`, text: '停用后不再出现在打卡页，从明天起不再计考勤。历史记录和结算会保留，可随时重新启用。', okText: '停用' })) return;
+      mutate('/api/admin/employee/toggle', { id: e.id }); break;
+    }
+    case 'emp-del': {
+      const e = empOf(el.dataset.id);
+      if (!await confirmBox({ title: `删除 ${e.name}？`, danger: true, okText: '永久删除', text: '该员工的打卡、业绩、成就记录将被删除（已生成的工资结算记录会保留）。<br>如果只是离职，建议使用「停用」。' })) return;
+      mutate('/api/admin/employee/delete', { id: e.id }, '已删除'); break;
+    }
+    case 'att-prev': A.attYm = shiftYm(A.attYm, -1); renderAtt(); break;
+    case 'att-next': A.attYm = shiftYm(A.attYm, 1); renderAtt(); break;
+    case 'att-now': A.attYm = curYm(); renderAtt(); break;
+    case 'att-cell': editDay(el.dataset.emp, el.dataset.ds); break;
+    case 'att-export': {
+      const [y, m] = R.splitDs(A.attYm), n = R.daysIn(y, m), t = nowTs(), s = st();
+      const lines = [['员工', '日期', '星期', '上班打卡', '任务完成', '状态', '当日工资', '工作记录', '是否补卡'].join(',')];
+      A.db.employees.forEach(e => {
+        const rate = (+e.salary || 0) / n;
+        for (let d = 1; d <= n; d++) {
+          const ds = R.ymd(y, m, d), ev = R.evalDay(A.db, e, ds, t), r = ev.rec || {};
+          if (ev.code === 'na') continue;
+          lines.push([e.name, ds, '周' + WEEK[R.dowOf(ds)], r.in ? R.fmtTS(r.in, s) : '', r.done ? R.fmtTS(r.done, s) : '', ev.label, ev.final ? R.r2(ev.ratio * rate) : '', r.note || '', r.edited ? '是' : ''].map(csvCell).join(','));
+        }
+      });
+      download(`考勤_${A.attYm}.csv`, lines.join('\r\n')); toast('考勤表已导出 ✓', 'ok'); break;
+    }
+    case 'perf-prev': A.perfYm = shiftYm(A.perfYm, -1); renderPerf(); break;
+    case 'perf-next': A.perfYm = shiftYm(A.perfYm, 1); renderPerf(); break;
+    case 'perf-now': A.perfYm = curYm(); renderPerf(); break;
+    case 'perf-add': mutate('/api/admin/perf', { empId: $('#pfEmp').value, date: $('#pfDate').value, amount: $('#pfAmt').value, note: $('#pfNote').value }, '业绩已录入 ✓'); break;
+    case 'perf-del': if (await confirmBox({ title: '删除这条业绩？', danger: true, okText: '删除' })) mutate('/api/admin/perf/delete', { id: el.dataset.id }, '已删除'); break;
+    case 'pay-slip': payslip(A.db.payrolls.find(x => x.id === el.dataset.id)); break;
+    case 'pay-recalc': mutate('/api/admin/payroll/recalc', { id: el.dataset.id }, '已按最新考勤和业绩重新计算 ✓'); break;
+    case 'pay-mark': case 'pay-all': {
+      const list = a === 'pay-all' ? A.db.payrolls.filter(x => x.payDate === el.dataset.date && !x.paid) : A.db.payrolls.filter(x => x.id === el.dataset.id);
+      if (!list.length) return;
+      const tot = list.reduce((s, x) => s + x.amount, 0);
+      if (!await confirmBox({ title: '确认发放工资？', icon: '💸', okText: '确认已发放', text: `共 ${list.length} 人，合计 <b style="color:var(--gold)">${money(tot)}</b>。<br>标记后结算记录将锁定，不再随考勤或业绩修改变化。` })) return;
+      mutate('/api/admin/payroll/mark', { ids: list.map(x => x.id), paid: true }, '已标记为已发放 💸'); break;
+    }
+    case 'pay-unmark': if (await confirmBox({ title: '撤销发放状态？', text: '撤销后该记录恢复为「待发放」。' })) mutate('/api/admin/payroll/mark', { ids: [el.dataset.id], paid: false }, '已撤销'); break;
+    case 'pay-export': {
+      const lines = [['发放日期', '结算月份', '员工', '月薪', '当月天数', '应出勤', '正常', '迟到半薪', '任务超时', '无薪', '缺勤', '日薪', '基本工资', '业绩', '提成比例%', '提成', '实发工资', '状态', '发放时间'].join(',')];
+      A.db.payrolls.slice().sort((a, b) => b.payDate.localeCompare(a.payDate)).forEach(x => lines.push([x.payDate, x.period, x.empName, x.salary, x.days, x.eligible, x.counts.normal, x.counts.late, x.counts.undone, x.counts.zero, x.counts.absent, x.rate, x.base, x.perfTotal, x.commissionRate, x.commission, x.amount, x.paid ? '已发放' : '待发放', x.paidAt ? R.fmtDT(x.paidAt, st()) : ''].map(csvCell).join(',')));
+      download(`工资结算记录_${today()}.csv`, lines.join('\r\n')); toast('已导出 ✓', 'ok'); break;
+    }
+    case 'set-save': mutate('/api/admin/settings', { company: $('#sCompany').value, salary: $('#sSalary').value, commissionRate: $('#sComm').value, payDay: $('#sPayDay').value, undoneRatio: $('#sUndone').value, inDL: $('#sIn').value, taskDL: $('#sTask').value }, '设置已保存 ✓'); break;
+    case 'key-reset': if (await confirmBox({ title: '更换终端激活码？', danger: true, okText: '更换', text: '更换后，所有打卡电脑都需要重新输入新的激活码才能打卡。' })) mutate('/api/admin/terminal-key/reset', {}, '激活码已更换'); break;
+    case 'pw-save': {
+      const n1 = $('#pwNew').value, n2 = $('#pwNew2').value;
+      if (n1 !== n2) return toast('两次输入的新密码不一致', 'err');
+      mutate('/api/admin/password', { old: $('#pwOld').value, password: n1 }, '密码已修改 🔐'); break;
+    }
+    case 'restore': $('#restoreFile').click(); break;
+  }
+});
+setInterval(async () => {
+  if (!A.db || UI.modalOpen || document.hidden) return;
+  if (document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  try { await load(); if (A.tab === 'dash' || A.tab === 'att' || A.tab === 'pay') render(); } catch (e) {}
+}, 30000);
+showGate();
+})();
+</script>
+</body>
+</html>
